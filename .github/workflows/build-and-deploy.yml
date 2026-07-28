@@ -1,0 +1,381 @@
+name: Build and Deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+        description: 'Target environment (develop, staging, production, qa, hmg, …)'
+
+      dockerfile:
+        required: false
+        type: string
+        default: './Dockerfile'
+
+      working-directory:
+        required: false
+        type: string
+        default: '.'
+
+      ref:
+        required: false
+        type: string
+        description: 'Git ref (branch/tag/SHA) to checkout. Defaults to triggering ref.'
+
+      image-tag-prefix:
+        required: false
+        type: string
+        description: 'Custom tag prefix (default: environment name)'
+
+      extra-tags:
+        required: false
+        type: string
+        description: 'Additional image tags, comma-separated'
+
+      allow-unauthenticated:
+        required: false
+        type: boolean
+        default: true
+        description: 'Allow unauthenticated access to Cloud Run service'
+
+    # ── Infrastructure variables (set per GitHub Environment) ────────────────
+    # Required GitHub Environment Variables:
+    #   GCP_PROJECT_ID                — GCP project ID
+    #   GCP_REGION                    — Cloud Run / Artifact Registry region
+    #   GCP_WORKLOAD_IDENTITY_PROVIDER — WIF provider resource name
+    #   GCP_SERVICE_ACCOUNT_EMAIL     — Deployer service account e-mail
+    #   AR_REPOSITORY                 — Artifact Registry repository name
+    #
+    # ── App secrets (set per GitHub Environment or GCP Secret Manager) ───────
+    # Sensitive values come from GCP Secret Manager and are declared in
+    # .github/config/environments.yml under runtime-secrets / volume-secrets.
+    # The only secret needed here is the GitHub Packages token for npm install.
+
+    secrets:
+      GH_PACKAGES_TOKEN:
+        required: true
+        description: 'GitHub token for @bankme-tech npm packages'
+
+    outputs:
+      image-url:
+        description: 'Full image URL (tag-based, for display)'
+        value: ${{ jobs.build.outputs.image-url }}
+      image-url-by-digest:
+        description: 'Full image URL pinned by digest (used for deploy)'
+        value: ${{ jobs.build.outputs.image-url-by-digest }}
+      image-digest:
+        description: 'Image digest (sha256:…)'
+        value: ${{ jobs.build.outputs.image-digest }}
+      service-url:
+        description: 'Cloud Run service URL'
+        value: ${{ jobs.load-config.outputs.service-url }}
+
+jobs:
+  # ── 1. Parse .github/config/environments.yml ──────────────────────────────
+  load-config:
+    name: Load Config
+    runs-on: ubuntu-latest
+    outputs:
+      service-name:       ${{ steps.config.outputs.service-name }}
+      memory:             ${{ steps.config.outputs.memory }}
+      cpu:                ${{ steps.config.outputs.cpu }}
+      timeout:            ${{ steps.config.outputs.timeout }}
+      min-instances:      ${{ steps.config.outputs.min-instances }}
+      max-instances:      ${{ steps.config.outputs.max-instances }}
+      cpu-throttling:     ${{ steps.config.outputs.cpu-throttling }}
+      runtime-env:        ${{ steps.config.outputs.runtime-env }}
+      runtime-secrets:    ${{ steps.config.outputs.runtime-secrets }}
+      volume-secrets:     ${{ steps.config.outputs.volume-secrets }}
+      build-node-version: ${{ steps.config.outputs.build-node-version }}
+      build-args:         ${{ steps.config.outputs.build-args }}
+      service-url:        ${{ steps.config.outputs.service-url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse environments.yml
+        id: config
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          python3 << 'PYEOF'
+          import yaml, os, sys
+
+          env_key = os.environ['ENVIRONMENT']
+
+          with open('.github/config/environments.yml') as f:
+              config = yaml.safe_load(f)
+
+          env_config = config.get('environments', {}).get(env_key)
+          if not env_config:
+              available = list(config.get('environments', {}).keys())
+              print(f"ERROR: environment '{env_key}' not found in environments.yml")
+              print(f"Available: {available}")
+              sys.exit(1)
+
+          resources        = env_config.get('resources', {})
+          build_cfg        = env_config.get('build', {})
+          runtime_env      = env_config.get('runtime-env', {})
+          runtime_secrets  = env_config.get('runtime-secrets', {})
+          volume_secrets   = env_config.get('volume-secrets', {})
+
+          # cpu-allocation: 'always' disables throttling (--no-cpu-throttling)
+          cpu_alloc     = resources.get('cpu-allocation', 'request')
+          cpu_throttling = 'false' if cpu_alloc == 'always' else 'true'
+
+          # Multiline outputs use heredoc syntax for GITHUB_OUTPUT
+          runtime_env_lines     = '\n'.join(f'{k}={v}' for k, v in runtime_env.items())
+          runtime_secrets_lines = '\n'.join(f'{k}={v}' for k, v in runtime_secrets.items())
+          volume_secrets_lines  = '\n'.join(f'{p}={s}' for p, s in volume_secrets.items())
+          build_args_lines      = '\n'.join(f'{k}={v}' for k, v in build_cfg.get('args', {}).items())
+
+          out = os.environ['GITHUB_OUTPUT']
+          with open(out, 'a') as f:
+              f.write(f"service-name={config.get('service-name', 'service')}\n")
+              f.write(f"memory={resources.get('memory', '512Mi')}\n")
+              f.write(f"cpu={resources.get('cpu', '1')}\n")
+              f.write(f"timeout={resources.get('timeout', 300)}\n")
+              f.write(f"min-instances={resources.get('min-instances', 0)}\n")
+              f.write(f"max-instances={resources.get('max-instances', 3)}\n")
+              f.write(f"cpu-throttling={cpu_throttling}\n")
+              f.write(f"build-node-version={build_cfg.get('node-version', '20')}\n")
+              f.write(f"service-url={env_config.get('service-url', '')}\n")
+              f.write(f"runtime-env<<EOF\n{runtime_env_lines}\nEOF\n")
+              f.write(f"runtime-secrets<<EOF\n{runtime_secrets_lines}\nEOF\n")
+              f.write(f"volume-secrets<<EOF\n{volume_secrets_lines}\nEOF\n")
+              f.write(f"build-args<<EOF\n{build_args_lines}\nEOF\n")
+
+          print(
+              f"Config loaded: {config.get('service-name')} | "
+              f"{resources.get('memory')} / {resources.get('cpu')} CPU | "
+              f"instances {resources.get('min-instances')}–{resources.get('max-instances')} | "
+              f"cpu-allocation: {cpu_alloc}"
+          )
+          PYEOF
+
+  # ── 2. Build Docker image and push to Artifact Registry ───────────────────
+  build:
+    name: Build & Push
+    needs: load-config
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    outputs:
+      image-url:           ${{ steps.set-output.outputs.image-url }}
+      image-url-by-digest: ${{ steps.set-output.outputs.image-url-by-digest }}
+      image-digest:        ${{ steps.build-image.outputs.digest }}
+      commit-short:        ${{ steps.set-output.outputs.commit-short }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Generate image tags
+        id: tags
+        run: |
+          IMAGE_BASE="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.AR_REPOSITORY }}/${{ needs.load-config.outputs.service-name }}"
+          COMMIT_SHORT="${GITHUB_SHA:0:7}"
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+          TAG_PREFIX="${{ inputs.image-tag-prefix }}"
+          [ -z "$TAG_PREFIX" ] && TAG_PREFIX="${{ inputs.environment }}"
+
+          TAGS="${IMAGE_BASE}:${TAG_PREFIX}"
+          TAGS="${TAGS},${IMAGE_BASE}:${TAG_PREFIX}-${TIMESTAMP}-${COMMIT_SHORT}"
+          TAGS="${TAGS},${IMAGE_BASE}:sha-${COMMIT_SHORT}"
+
+          if [ -n "${{ inputs.extra-tags }}" ]; then
+            IFS=',' read -ra EXTRA <<< "${{ inputs.extra-tags }}"
+            for tag in "${EXTRA[@]}"; do
+              TAGS="${TAGS},${IMAGE_BASE}:${tag}"
+            done
+          fi
+
+          echo "tags=${TAGS}"          >> $GITHUB_OUTPUT
+          echo "image-base=${IMAGE_BASE}" >> $GITHUB_OUTPUT
+          echo "primary-tag=${TAG_PREFIX}" >> $GITHUB_OUTPUT
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Prepare build-args
+        id: build-env
+        run: |
+          # GH_PACKAGES_TOKEN is always passed so Dockerfiles can install
+          # @bankme-tech private packages regardless of the ARG name used.
+          BUILD_ARGS="GH_PACKAGES_TOKEN=${{ secrets.GH_PACKAGES_TOKEN }}"
+          BUILD_ARGS="${BUILD_ARGS}"$'\ngithub_token=${{ secrets.GH_PACKAGES_TOKEN }}'
+
+          EXTRA="${{ needs.load-config.outputs.build-args }}"
+          [ -n "$EXTRA" ] && BUILD_ARGS="${BUILD_ARGS}"$'\n'"${EXTRA}"
+
+          echo "args<<EOF"  >> $GITHUB_OUTPUT
+          echo "$BUILD_ARGS" >> $GITHUB_OUTPUT
+          echo "EOF"         >> $GITHUB_OUTPUT
+
+      - name: Build and push image
+        id: build-image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ inputs.working-directory }}
+          file: ${{ inputs.dockerfile }}
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: ${{ steps.build-env.outputs.args }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
+
+      - name: Set outputs
+        id: set-output
+        run: |
+          COMMIT_SHORT="${GITHUB_SHA:0:7}"
+          echo "image-url=${{ steps.tags.outputs.image-base }}:${{ steps.tags.outputs.primary-tag }}" >> $GITHUB_OUTPUT
+          echo "image-url-by-digest=${{ steps.tags.outputs.image-base }}@${{ steps.build-image.outputs.digest }}" >> $GITHUB_OUTPUT
+          echo "commit-short=${COMMIT_SHORT}" >> $GITHUB_OUTPUT
+
+  # ── 3. Deploy to Cloud Run ─────────────────────────────────────────────────
+  deploy:
+    name: Deploy
+    needs: [load-config, build]
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Build deploy flags
+        id: flags
+        run: |
+          # ── env vars (non-sensitive, clear-text from environments.yml) ──────
+          ENV_FLAGS=""
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            ENV_FLAGS="${ENV_FLAGS}${line},"
+          done <<< "${{ needs.load-config.outputs.runtime-env }}"
+          ENV_FLAGS="${ENV_FLAGS%,}"
+
+          # ── secrets (GCP Secret Manager → env vars AND volume mounts) ───────
+          # Both share the same --set-secrets flag:
+          #   env var  → KEY=secret-name:version
+          #   file     → /path/to/file=secret-name:version
+          SECRET_FLAGS=""
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            SECRET_FLAGS="${SECRET_FLAGS}${line},"
+          done <<< "${{ needs.load-config.outputs.runtime-secrets }}"
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            SECRET_FLAGS="${SECRET_FLAGS}${line},"
+          done <<< "${{ needs.load-config.outputs.volume-secrets }}"
+          SECRET_FLAGS="${SECRET_FLAGS%,}"
+
+          echo "env-flags=${ENV_FLAGS}"       >> $GITHUB_OUTPUT
+          echo "secret-flags=${SECRET_FLAGS}" >> $GITHUB_OUTPUT
+
+      - name: Deploy to Cloud Run
+        run: |
+          ALLOW_UNAUTH="--allow-unauthenticated"
+          [ "${{ inputs.allow-unauthenticated }}" != "true" ] && ALLOW_UNAUTH="--no-allow-unauthenticated"
+
+          ENV="${{ inputs.environment }}"
+          COMMIT_SHORT="${{ needs.build.outputs.commit-short }}"
+
+          DEPLOY_ARGS=(
+            "gcloud" "run" "deploy" "${{ needs.load-config.outputs.service-name }}"
+            "--image=${{ needs.build.outputs.image-url-by-digest }}"
+            "--project=${{ vars.GCP_PROJECT_ID }}"
+            "--region=${{ vars.GCP_REGION }}"
+            "--platform=managed"
+            "--service-account=${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}"
+            "--memory=${{ needs.load-config.outputs.memory }}"
+            "--cpu=${{ needs.load-config.outputs.cpu }}"
+            "--timeout=${{ needs.load-config.outputs.timeout }}s"
+            "--min-instances=${{ needs.load-config.outputs.min-instances }}"
+            "--max-instances=${{ needs.load-config.outputs.max-instances }}"
+            "--revision-suffix=${ENV}-${COMMIT_SHORT}"
+            "$ALLOW_UNAUTH"
+          )
+
+          # cpu-allocation: always → disable throttling
+          [ "${{ needs.load-config.outputs.cpu-throttling }}" = "false" ] && \
+            DEPLOY_ARGS+=("--no-cpu-throttling")
+
+          [ -n "${{ steps.flags.outputs.env-flags }}" ] && \
+            DEPLOY_ARGS+=("--set-env-vars=${{ steps.flags.outputs.env-flags }}")
+
+          [ -n "${{ steps.flags.outputs.secret-flags }}" ] && \
+            DEPLOY_ARGS+=("--set-secrets=${{ steps.flags.outputs.secret-flags }}")
+
+          echo "Deploying ${{ needs.load-config.outputs.service-name }} → ${{ inputs.environment }}..."
+          "${DEPLOY_ARGS[@]}"
+
+      - name: Route traffic to latest revision
+        run: |
+          gcloud run services update-traffic "${{ needs.load-config.outputs.service-name }}" \
+            --to-latest \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --region="${{ vars.GCP_REGION }}"
+
+      - name: Cleanup old revisions
+        continue-on-error: true
+        run: |
+          SERVICE="${{ needs.load-config.outputs.service-name }}"
+          PROJECT="${{ vars.GCP_PROJECT_ID }}"
+          REGION="${{ vars.GCP_REGION }}"
+          KEEP=10
+          COUNT=0
+          DELETED=0
+
+          while IFS= read -r REV; do
+            COUNT=$((COUNT + 1))
+            [ "$COUNT" -le "$KEEP" ] && continue
+            gcloud run revisions delete "$REV" \
+              --project="$PROJECT" --region="$REGION" --quiet 2>/dev/null || true
+            DELETED=$((DELETED + 1))
+          done < <(gcloud run revisions list \
+            --service="$SERVICE" --project="$PROJECT" --region="$REGION" \
+            --format='value(metadata.name)' \
+            --sort-by='~metadata.creationTimestamp' \
+            --limit=50)
+
+          echo "Kept $KEEP revisions, deleted $DELETED old revision(s)"
+
+      - name: Summary
+        run: |
+          echo "## Deploy Complete" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | \`${{ inputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Service** | ${{ needs.load-config.outputs.service-name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Image** | \`${{ needs.build.outputs.image-url }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Digest** | \`${{ needs.build.outputs.image-digest }}\` |" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ needs.load-config.outputs.service-url }}" ]; then
+            echo "| **URL** | ${{ needs.load-config.outputs.service-url }} |" >> $GITHUB_STEP_SUMMARY
+          fi

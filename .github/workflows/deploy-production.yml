@@ -1,0 +1,321 @@
+name: Promote to Production
+
+# Reusable workflow — called by each project's deploy-production.yml.
+#
+# Flow: promote, don't rebuild.
+#   1. Fetch the staging image digest (the exact image validated in staging)
+#   2. Copy it to the production Artifact Registry
+#   3. Deploy to Cloud Run using the digest-pinned image
+#
+# Required GitHub Environment Variables (set on the 'production' environment):
+#   GCP_PROJECT_ID                — production GCP project
+#   GCP_REGION                    — region (Cloud Run + AR)
+#   GCP_WORKLOAD_IDENTITY_PROVIDER
+#   GCP_SERVICE_ACCOUNT_EMAIL
+#   AR_REPOSITORY                 — AR repo name (same name assumed in staging)
+#   GCP_STAGING_PROJECT_ID        — staging GCP project (where the image lives)
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+        description: 'Staging version tag to promote (e.g. v1.2.0)'
+
+      reason:
+        required: true
+        type: string
+        description: 'Reason for the production deploy (required for audit trail)'
+
+      org:
+        required: false
+        type: string
+        default: 'bankme-tech'
+        description: 'GitHub organization that owns the required team'
+
+      team:
+        required: false
+        type: string
+        default: 'seniors'
+        description: 'GitHub team slug required for production access'
+
+      allow-unauthenticated:
+        required: false
+        type: boolean
+        default: true
+
+    secrets:
+      GH_PACKAGES_TOKEN:
+        required: true
+
+    outputs:
+      service-url:
+        value: ${{ jobs.load-config.outputs.service-url }}
+
+jobs:
+  # ── Gate: verify the actor belongs to the required GitHub team ─────────────
+  check-permission:
+    name: Check Permission
+    runs-on: ubuntu-latest
+    outputs:
+      allowed: ${{ steps.check.outputs.allowed }}
+    steps:
+      - name: Verify production access
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+        run: |
+          ACTOR="${{ github.actor }}"
+          ORG="${{ inputs.org }}"
+          TEAM="${{ inputs.team }}"
+
+          echo "Verificando se $ACTOR é membro do time @$ORG/$TEAM..."
+
+          if gh api "/orgs/$ORG/teams/$TEAM/memberships/$ACTOR" --silent 2>/dev/null; then
+            echo "allowed=true" >> $GITHUB_OUTPUT
+          else
+            echo "allowed=false" >> $GITHUB_OUTPUT
+            echo "## Acesso Negado" >> $GITHUB_STEP_SUMMARY
+            echo "| | |" >> $GITHUB_STEP_SUMMARY
+            echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+            echo "| **Usuário** | @$ACTOR |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Time necessário** | @$ORG/$TEAM |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Apenas membros de **@$ORG/$TEAM** podem promover releases para produção." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Fail if not allowed
+        if: steps.check.outputs.allowed != 'true'
+        run: exit 1
+
+  # ── Load project config from environments.yml ──────────────────────────────
+  load-config:
+    name: Load Config
+    needs: check-permission
+    runs-on: ubuntu-latest
+    outputs:
+      service-name:     ${{ steps.config.outputs.service-name }}
+      memory:           ${{ steps.config.outputs.memory }}
+      cpu:              ${{ steps.config.outputs.cpu }}
+      timeout:          ${{ steps.config.outputs.timeout }}
+      min-instances:    ${{ steps.config.outputs.min-instances }}
+      max-instances:    ${{ steps.config.outputs.max-instances }}
+      cpu-throttling:   ${{ steps.config.outputs.cpu-throttling }}
+      runtime-env:      ${{ steps.config.outputs.runtime-env }}
+      runtime-secrets:  ${{ steps.config.outputs.runtime-secrets }}
+      volume-secrets:   ${{ steps.config.outputs.volume-secrets }}
+      service-url:      ${{ steps.config.outputs.service-url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse environments.yml
+        id: config
+        run: |
+          python3 << 'PYEOF'
+          import yaml, os, sys
+
+          with open('.github/config/environments.yml') as f:
+              config = yaml.safe_load(f)
+
+          env_config = config.get('environments', {}).get('production')
+          if not env_config:
+              print("ERROR: 'production' environment not found in environments.yml")
+              sys.exit(1)
+
+          resources       = env_config.get('resources', {})
+          runtime_env     = env_config.get('runtime-env', {})
+          runtime_secrets = env_config.get('runtime-secrets', {})
+          volume_secrets  = env_config.get('volume-secrets', {})
+
+          cpu_alloc      = resources.get('cpu-allocation', 'request')
+          cpu_throttling = 'false' if cpu_alloc == 'always' else 'true'
+
+          runtime_env_lines     = '\n'.join(f'{k}={v}' for k, v in runtime_env.items())
+          runtime_secrets_lines = '\n'.join(f'{k}={v}' for k, v in runtime_secrets.items())
+          volume_secrets_lines  = '\n'.join(f'{p}={s}' for p, s in volume_secrets.items())
+
+          out = os.environ['GITHUB_OUTPUT']
+          with open(out, 'a') as f:
+              f.write(f"service-name={config.get('service-name', 'service')}\n")
+              f.write(f"memory={resources.get('memory', '1Gi')}\n")
+              f.write(f"cpu={resources.get('cpu', '1')}\n")
+              f.write(f"timeout={resources.get('timeout', 300)}\n")
+              f.write(f"min-instances={resources.get('min-instances', 1)}\n")
+              f.write(f"max-instances={resources.get('max-instances', 2)}\n")
+              f.write(f"cpu-throttling={cpu_throttling}\n")
+              f.write(f"service-url={env_config.get('service-url', '')}\n")
+              f.write(f"runtime-env<<EOF\n{runtime_env_lines}\nEOF\n")
+              f.write(f"runtime-secrets<<EOF\n{runtime_secrets_lines}\nEOF\n")
+              f.write(f"volume-secrets<<EOF\n{volume_secrets_lines}\nEOF\n")
+
+          print(f"Config: {config.get('service-name')} | "
+                f"{resources.get('memory')} / {resources.get('cpu')} CPU | "
+                f"instances {resources.get('min-instances')}–{resources.get('max-instances')}")
+          PYEOF
+
+  # ── Promote staging image → production and deploy ──────────────────────────
+  promote:
+    name: Promote to Production
+    needs: [check-permission, load-config]
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Get staging image digest
+        id: image
+        env:
+          VERSION:         ${{ inputs.version }}
+          STAGING_PROJECT: ${{ vars.GCP_STAGING_PROJECT_ID }}
+          REGION:          ${{ vars.GCP_REGION }}
+          AR_REPO:         ${{ vars.AR_REPOSITORY }}
+          SERVICE:         ${{ needs.load-config.outputs.service-name }}
+        run: |
+          STAGING_IMAGE="${REGION}-docker.pkg.dev/${STAGING_PROJECT}/${AR_REPO}/${SERVICE}:${VERSION}"
+          echo "Buscando digest de: ${STAGING_IMAGE}"
+
+          DIGEST=$(gcloud artifacts docker images describe "${STAGING_IMAGE}" \
+            --project="${STAGING_PROJECT}" \
+            --format='get(image_summary.digest)' 2>&1)
+
+          if [ -z "$DIGEST" ] || [[ "$DIGEST" == *"error"* ]]; then
+            echo "Erro ao buscar digest da imagem ${STAGING_IMAGE}"
+            echo "$DIGEST"
+            exit 1
+          fi
+
+          PROD_IMAGE_BASE="${REGION}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${AR_REPO}/${SERVICE}"
+          STAGING_BY_DIGEST="${REGION}-docker.pkg.dev/${STAGING_PROJECT}/${AR_REPO}/${SERVICE}@${DIGEST}"
+
+          echo "Digest encontrado: ${DIGEST}"
+          echo "staging-image=${STAGING_BY_DIGEST}" >> $GITHUB_OUTPUT
+          echo "prod-image-base=${PROD_IMAGE_BASE}"  >> $GITHUB_OUTPUT
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Copy image to production Artifact Registry
+        env:
+          STAGING_IMAGE: ${{ steps.image.outputs.staging-image }}
+          PROD_BASE:     ${{ steps.image.outputs.prod-image-base }}
+          VERSION:       ${{ inputs.version }}
+        run: |
+          docker pull "${STAGING_IMAGE}"
+          docker tag  "${STAGING_IMAGE}" "${PROD_BASE}:production"
+          docker tag  "${STAGING_IMAGE}" "${PROD_BASE}:${VERSION}"
+          docker push "${PROD_BASE}:production"
+          docker push "${PROD_BASE}:${VERSION}"
+
+      - name: Get production image digest
+        id: prod-image
+        run: |
+          PROD_IMAGE_BY_TAG="${{ steps.image.outputs.prod-image-base }}:${{ inputs.version }}"
+          PROD_DIGEST=$(gcloud artifacts docker images describe "${PROD_IMAGE_BY_TAG}" \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --format='get(image_summary.digest)')
+          echo "Digest em produção: ${PROD_DIGEST}"
+          echo "image=${PROD_IMAGE_BY_TAG}@${PROD_DIGEST}" >> $GITHUB_OUTPUT
+          echo "digest=${PROD_DIGEST}"                      >> $GITHUB_OUTPUT
+
+      - name: Build deploy flags
+        id: flags
+        run: |
+          ENV_FLAGS=""
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            ENV_FLAGS="${ENV_FLAGS}${line},"
+          done <<< "${{ needs.load-config.outputs.runtime-env }}"
+          ENV_FLAGS="${ENV_FLAGS%,}"
+
+          SECRET_FLAGS=""
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            SECRET_FLAGS="${SECRET_FLAGS}${line},"
+          done <<< "${{ needs.load-config.outputs.runtime-secrets }}"
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            SECRET_FLAGS="${SECRET_FLAGS}${line},"
+          done <<< "${{ needs.load-config.outputs.volume-secrets }}"
+          SECRET_FLAGS="${SECRET_FLAGS%,}"
+
+          echo "env-flags=${ENV_FLAGS}"       >> $GITHUB_OUTPUT
+          echo "secret-flags=${SECRET_FLAGS}" >> $GITHUB_OUTPUT
+
+      - name: Deploy to Cloud Run
+        run: |
+          ALLOW_UNAUTH="--allow-unauthenticated"
+          [ "${{ inputs.allow-unauthenticated }}" != "true" ] && ALLOW_UNAUTH="--no-allow-unauthenticated"
+
+          PROD_IMAGE="${{ steps.prod-image.outputs.image }}"
+          DIGEST="${{ steps.prod-image.outputs.digest }}"
+          COMMIT_SHORT="${DIGEST:7:7}"
+
+          DEPLOY_ARGS=(
+            "gcloud" "run" "deploy" "${{ needs.load-config.outputs.service-name }}"
+            "--image=${PROD_IMAGE}"
+            "--project=${{ vars.GCP_PROJECT_ID }}"
+            "--region=${{ vars.GCP_REGION }}"
+            "--platform=managed"
+            "--service-account=${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}"
+            "--memory=${{ needs.load-config.outputs.memory }}"
+            "--cpu=${{ needs.load-config.outputs.cpu }}"
+            "--timeout=${{ needs.load-config.outputs.timeout }}s"
+            "--min-instances=${{ needs.load-config.outputs.min-instances }}"
+            "--max-instances=${{ needs.load-config.outputs.max-instances }}"
+            "--revision-suffix=prod-${COMMIT_SHORT}"
+            "$ALLOW_UNAUTH"
+          )
+
+          [ "${{ needs.load-config.outputs.cpu-throttling }}" = "false" ] && \
+            DEPLOY_ARGS+=("--no-cpu-throttling")
+
+          [ -n "${{ steps.flags.outputs.env-flags }}" ] && \
+            DEPLOY_ARGS+=("--set-env-vars=${{ steps.flags.outputs.env-flags }}")
+
+          [ -n "${{ steps.flags.outputs.secret-flags }}" ] && \
+            DEPLOY_ARGS+=("--set-secrets=${{ steps.flags.outputs.secret-flags }}")
+
+          echo "Promoting ${{ inputs.version }} to production..."
+          "${DEPLOY_ARGS[@]}"
+
+      - name: Route traffic to latest revision
+        run: |
+          gcloud run services update-traffic "${{ needs.load-config.outputs.service-name }}" \
+            --to-latest \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --region="${{ vars.GCP_REGION }}"
+
+  # ── Audit summary ──────────────────────────────────────────────────────────
+  summary:
+    name: Deployment Summary
+    needs: promote
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - run: |
+          echo "## Promote to Production" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Versão** | \`${{ inputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Motivo** | ${{ inputs.reason }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Acionado por** | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.promote.result }}" = "success" ]; then
+            echo "| **Status** | Promovido com sucesso |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Status** | Falhou |" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -1,0 +1,141 @@
+name: Pull Request CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        required: false
+        type: string
+        default: '20'
+        description: 'Node.js version'
+
+      lint-command:
+        required: false
+        type: string
+        default: 'yarn lint'
+        description: 'Lint command (e.g. "yarn lint:ci" for Biome CI mode)'
+
+      test-command:
+        required: false
+        type: string
+        default: 'yarn test -- run --passWithNoTests'
+        description: 'Test command'
+
+      enable-typecheck:
+        required: false
+        type: boolean
+        default: true
+
+      enable-lint:
+        required: false
+        type: boolean
+        default: true
+
+      enable-test:
+        required: false
+        type: boolean
+        default: true
+
+      enable-build:
+        required: false
+        type: boolean
+        default: true
+
+      enable-security-audit:
+        required: false
+        type: boolean
+        default: true
+        description: 'Run yarn audit --level high'
+
+      using-prisma:
+        required: false
+        type: boolean
+        default: false
+        description: 'Run yarn prisma:generate before typecheck/build'
+
+      sonar-project-key:
+        required: false
+        type: string
+        default: ''
+        description: 'SonarCloud project key. Leave empty to skip Sonar analysis.'
+
+    secrets:
+      GH_PACKAGES_TOKEN:
+        required: true
+      SONAR_TOKEN:
+        required: false
+
+jobs:
+  # ── Quality checks ────────────────────────────────────────────────────────
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'yarn'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@bankme-tech'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+
+      - name: Generate Prisma client
+        if: inputs.using-prisma
+        run: yarn prisma:generate
+        continue-on-error: true
+
+      - name: Typecheck
+        if: inputs.enable-typecheck
+        run: yarn typecheck
+        continue-on-error: true
+
+      - name: Lint
+        if: inputs.enable-lint
+        run: ${{ inputs.lint-command }}
+        continue-on-error: true
+
+      - name: Test
+        if: inputs.enable-test
+        run: ${{ inputs.test-command }}
+        continue-on-error: true
+
+      - name: Build
+        if: inputs.enable-build
+        run: yarn build
+        continue-on-error: true
+
+      - name: Security audit
+        if: inputs.enable-security-audit
+        run: yarn audit --level high
+        continue-on-error: true
+
+  # ── SonarCloud analysis (optional) ────────────────────────────────────────
+  sonar:
+    name: SonarCloud Analysis
+    needs: ci
+    if: inputs.sonar-project-key != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
