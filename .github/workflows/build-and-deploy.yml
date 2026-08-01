@@ -239,7 +239,37 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           build-args: ${{ steps.build-env.outputs.args }}
           cache-from: type=gha
-          cache-to: type=gha,mode=min
+          cache-to: type=gha,mode=min,ignore-error=true
+
+      - name: Warn if GHA cache is full
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+        run: |
+          USAGE=$(gh api /repos/${{ github.repository }}/actions/cache/usage \
+            --jq '.active_caches_size_in_bytes' 2>/dev/null || echo "")
+
+          [[ -z "$USAGE" || "$USAGE" == "null" ]] && exit 0
+
+          LIMIT=10737418240
+          USAGE_GB=$(awk "BEGIN {printf \"%.1f\", $USAGE/1073741824}")
+          PCT=$(awk "BEGIN {printf \"%d\", $USAGE/$LIMIT*100}")
+
+          if [ "$USAGE" -gt "$((LIMIT * 85 / 100))" ]; then
+            ICON="⚠️"
+            [ "$USAGE" -gt "$LIMIT" ] && ICON="🔴"
+            {
+              echo "## ${ICON} GHA Cache — Atenção"
+              echo "| | |"
+              echo "|---|---|"
+              echo "| **Uso** | ${USAGE_GB} GB / 10 GB (${PCT}%) |"
+              echo "| **Repo** | \`${{ github.repository }}\` |"
+              echo "> O cache de camadas Docker pode não ter sido salvo neste run."
+              echo "> Limpe entradas antigas em: https://github.com/${{ github.repository }}/actions/caches"
+            } >> $GITHUB_STEP_SUMMARY
+            echo "::warning title=GHA Cache cheio::Cache em ${USAGE_GB}GB/10GB (${PCT}%) — escrita pode ter falhado."
+          fi
 
       - name: Set outputs
         id: set-output
@@ -330,8 +360,12 @@ jobs:
           [ -n "${{ steps.flags.outputs.env-flags }}" ] && \
             DEPLOY_ARGS+=("--set-env-vars=${{ steps.flags.outputs.env-flags }}")
 
-          [ -n "${{ steps.flags.outputs.secret-flags }}" ] && \
+          if [ -n "${{ steps.flags.outputs.secret-flags }}" ]; then
             DEPLOY_ARGS+=("--set-secrets=${{ steps.flags.outputs.secret-flags }}")
+          else
+            # Explicitly clear any secrets left from previous deploys
+            DEPLOY_ARGS+=("--clear-secrets")
+          fi
 
           echo "Deploying ${{ needs.load-config.outputs.service-name }} → ${{ inputs.environment }}..."
           "${DEPLOY_ARGS[@]}"
@@ -350,9 +384,26 @@ jobs:
           PROJECT="${{ vars.GCP_PROJECT_ID }}"
           REGION="${{ vars.GCP_REGION }}"
           KEEP=10
+
+          LATEST=$(gcloud run services describe "$SERVICE" \
+            --project="$PROJECT" --region="$REGION" \
+            --format='value(status.latestReadyRevisionName)')
+
+          # Remove traffic tags from old revisions before deleting
+          OLD_TAGS=$(gcloud run services describe "$SERVICE" \
+            --project="$PROJECT" --region="$REGION" \
+            --format='json(status.traffic)' \
+            | jq -r '.status.traffic[]? | select(.revisionName != "'"$LATEST"'") | .tag // empty')
+
+          if [ -n "$OLD_TAGS" ]; then
+            REMOVE_TAGS=$(echo "$OLD_TAGS" | tr '\n' ',' | sed 's/,$//')
+            gcloud run services update-traffic "$SERVICE" \
+              --project="$PROJECT" --region="$REGION" \
+              --remove-tags="$REMOVE_TAGS" 2>/dev/null || true
+          fi
+
           COUNT=0
           DELETED=0
-
           while IFS= read -r REV; do
             COUNT=$((COUNT + 1))
             [ "$COUNT" -le "$KEEP" ] && continue
