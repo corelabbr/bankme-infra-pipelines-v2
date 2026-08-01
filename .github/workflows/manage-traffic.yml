@@ -1,0 +1,182 @@
+name: Manage Cloud Run Traffic
+
+# Controls traffic distribution between Cloud Run revisions.
+# Supports canary (any % you choose), full release, and rollback.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+        description: 'Target environment'
+      action:
+        required: true
+        type: string
+        description: 'Traffic action: canary, release-100, rollback'
+      traffic-percent:
+        required: false
+        type: number
+        default: 10
+        description: 'Percentage for canary action (1–99)'
+      target-revision:
+        required: false
+        type: string
+        description: 'Revision name for rollback (required when action=rollback)'
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        required: true
+        type: choice
+        options: [develop, staging, qa, hmg, production]
+        description: 'Target environment'
+      action:
+        required: true
+        type: choice
+        options: [canary, release-100, rollback]
+        description: 'canary = envie X% para a nova revisão | release-100 = 100% para a mais nova | rollback = volta para revisão específica'
+      traffic-percent:
+        required: false
+        type: number
+        default: 10
+        description: 'Percentual de tráfego para canary (1–99). Ignorado em release-100 e rollback.'
+      target-revision:
+        required: false
+        type: string
+        description: 'Nome da revisão para rollback (ex: front-bankme-prod-a1b2c3d)'
+
+jobs:
+  load-config:
+    name: Load Config
+    runs-on: ubuntu-latest
+    outputs:
+      service-name: ${{ steps.config.outputs.service-name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse environments.yml
+        id: config
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          python3 << 'PYEOF'
+          import yaml, os, sys
+
+          env_key = os.environ['ENVIRONMENT']
+          with open('.github/config/environments.yml') as f:
+              config = yaml.safe_load(f)
+
+          if env_key not in config.get('environments', {}):
+              print(f"ERROR: '{env_key}' not found in environments.yml")
+              sys.exit(1)
+
+          out = os.environ['GITHUB_OUTPUT']
+          with open(out, 'a') as f:
+              f.write(f"service-name={config.get('service-name', 'service')}\n")
+          PYEOF
+
+  traffic:
+    name: ${{ inputs.action }} ${{ inputs.traffic-percent }}% — ${{ inputs.environment }}
+    needs: load-config
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Show current traffic
+        run: |
+          echo "### Traffic before" >> $GITHUB_STEP_SUMMARY
+          gcloud run services describe "${{ needs.load-config.outputs.service-name }}" \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --region="${{ vars.GCP_REGION }}" \
+            --format='table(status.traffic.revisionName,status.traffic.percent,status.traffic.tag)' \
+            | tee -a $GITHUB_STEP_SUMMARY
+
+      - name: Get latest revision
+        id: latest
+        if: inputs.action != 'rollback'
+        run: |
+          REV=$(gcloud run services describe "${{ needs.load-config.outputs.service-name }}" \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --region="${{ vars.GCP_REGION }}" \
+            --format='value(status.latestCreatedRevisionName)')
+          echo "revision=$REV" >> $GITHUB_OUTPUT
+          echo "Latest revision: $REV"
+
+      - name: Apply traffic split
+        run: |
+          SERVICE="${{ needs.load-config.outputs.service-name }}"
+          PROJECT="${{ vars.GCP_PROJECT_ID }}"
+          REGION="${{ vars.GCP_REGION }}"
+          ACTION="${{ inputs.action }}"
+          LATEST="${{ steps.latest.outputs.revision }}"
+          PCT="${{ inputs.traffic-percent }}"
+
+          # Validate percentage
+          if [ "$ACTION" = "canary" ]; then
+            if [ "$PCT" -lt 1 ] || [ "$PCT" -gt 99 ]; then
+              echo "ERROR: traffic-percent must be between 1 and 99 (got $PCT)"
+              exit 1
+            fi
+          fi
+
+          case "$ACTION" in
+            release-100)
+              echo "Sending 100% traffic to latest revision ($LATEST)..."
+              gcloud run services update-traffic "$SERVICE" \
+                --project="$PROJECT" --region="$REGION" --to-latest
+              ;;
+            canary)
+              echo "Sending ${PCT}% traffic to latest revision ($LATEST)..."
+              gcloud run services update-traffic "$SERVICE" \
+                --project="$PROJECT" --region="$REGION" \
+                --to-revisions="${LATEST}=${PCT}"
+              ;;
+            rollback)
+              TARGET="${{ inputs.target-revision }}"
+              if [ -z "$TARGET" ]; then
+                echo "ERROR: target-revision required for rollback"
+                exit 1
+              fi
+              echo "Rolling back: 100% traffic → $TARGET"
+              gcloud run services update-traffic "$SERVICE" \
+                --project="$PROJECT" --region="$REGION" \
+                --to-revisions="${TARGET}=100"
+              ;;
+          esac
+
+      - name: Show new traffic
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Traffic after" >> $GITHUB_STEP_SUMMARY
+          gcloud run services describe "${{ needs.load-config.outputs.service-name }}" \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --region="${{ vars.GCP_REGION }}" \
+            --format='table(status.traffic.revisionName,status.traffic.percent,status.traffic.tag,status.traffic.url)' \
+            | tee -a $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Action** | ${{ inputs.action }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Traffic %** | ${{ inputs.traffic-percent }}% |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Service** | ${{ needs.load-config.outputs.service-name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | ${{ inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.action }}" = "rollback" ]; then
+            echo "| **Target revision** | ${{ inputs.target-revision }} |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Latest revision** | ${{ steps.latest.outputs.revision }} |" >> $GITHUB_STEP_SUMMARY
+          fi
