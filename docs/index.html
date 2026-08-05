@@ -142,9 +142,55 @@ nav button:disabled { opacity:.2; cursor:default; }
 <!-- SLIDE 4: Passo 1 GCP -->
 <div class="slide">
   <div class="slide-tag">Passo 1</div>
-  <h1>Configurar o GCP — por ambiente</h1>
-  <p class="lead">Execute uma vez para cada ambiente: develop, staging, production.</p>
-  <pre><span class="c"># Clonar e preparar</span>
+  <h1>Configurar o GCP — o que o script faz</h1>
+  <p class="lead">O script é idempotente — seguro de rodar em projetos existentes. Veja o que cada etapa faz antes de executar.</p>
+  <div class="cols">
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div class="card">
+        <h3>① Habilitar APIs <span style="color:var(--green);font-size:11px;">— seguro</span></h3>
+        <p>Ativa run, artifactregistry, secretmanager, iam, iamcredentials. Idempotente — não desativa nada existente.</p>
+      </div>
+      <div class="card">
+        <h3>② Criar Service Account <span style="color:var(--green);font-size:11px;">— seguro</span></h3>
+        <p>Cria <code>github-deployer@projeto.iam…</code>. Se já existir com outro nome, pule esta etapa e use o SA existente.</p>
+      </div>
+      <div class="card">
+        <h3>③ Conceder roles IAM <span style="color:var(--green);font-size:11px;">— seguro, só adiciona</span></h3>
+        <p>Adiciona run.admin, artifactregistry.writer, secretmanager.secretAccessor, iam.serviceAccountUser ao SA. Não remove roles existentes.</p>
+      </div>
+      <div class="card">
+        <h3>④ Configurar WIF <span style="color:var(--orange);font-size:11px;">— atenção se já tiver WIF</span></h3>
+        <p>Cria o pool <code>github-pool</code> e o provider <code>github-provider</code>. <strong>Se já existirem, atualiza a attribute condition.</strong> Verifique a condition atual antes de rodar para não quebrar outros projetos que usam o mesmo pool.</p>
+      </div>
+      <div class="card">
+        <h3>⑤ Criar Artifact Registry <span style="color:var(--green);font-size:11px;">— seguro</span></h3>
+        <p>Cria o repositório Docker. Se já existir, não faz nada.</p>
+      </div>
+    </div>
+    <div>
+      <div class="warn-box" style="margin-bottom:12px;">
+        <strong>Se já tem WIF configurado:</strong><br>
+        Verifique a condition atual antes de rodar o script:
+        <pre style="margin-top:8px;font-size:11px;"><span class="cmd">gcloud iam workload-identity-pools providers describe</span> github-provider <span class="flag">\
+  --workload-identity-pool</span>=github-pool <span class="flag">\
+  --project</span>=SEU_PROJETO <span class="flag">--location</span>=global <span class="flag">\
+  --format</span>=<span class="str">"value(attributeCondition)"</span></pre>
+        Se já usa o mesmo pool para outros repos, configure a condition manualmente em vez de deixar o script sobrescrever.
+      </div>
+      <div class="note">
+        <strong>Posso executar só parte do script?</strong><br>
+        Sim. O script está dividido em seções numeradas (1 a 5) com comentários claros. Abra <code>scripts/setup-gcp.sh</code> e execute apenas os blocos que precisar — cada bloco é independente.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 4b: Passo 1 comandos -->
+<div class="slide">
+  <div class="slide-tag">Passo 1 — Execução</div>
+  <h1>Executando o setup-gcp.sh</h1>
+  <p class="lead">Após verificar o que será feito, execute para cada ambiente. O script imprime ao final os valores para o Passo 2.</p>
+  <pre><span class="c"># Clonar e preparar os scripts</span>
 <span class="cmd">git clone</span> https://github.com/bankme-tech/infra-pipelines-v2.git
 <span class="cmd">cd</span> infra-pipelines-v2 <span class="cmd">&&</span> <span class="cmd">chmod +x</span> scripts/*.sh
 
@@ -153,15 +199,17 @@ nav button:disabled { opacity:.2; cursor:default; }
   --project</span>   bankme-frontend-dev <span class="flag">--env</span> develop <span class="flag">\
   --region</span>    us-central1 <span class="flag">--gh-org</span> bankme-tech <span class="flag">--gh-repo</span> bankme-frontend
 
-<span class="c"># staging (mesmo comando com --project e --env diferentes)</span>
-<span class="cmd">./scripts/setup-gcp.sh</span> <span class="flag">--project</span> bankme-frontend-stg <span class="flag">--env</span> staging ...
+<span class="c"># staging</span>
+<span class="cmd">./scripts/setup-gcp.sh</span> <span class="flag">\
+  --project</span>   bankme-frontend-stg <span class="flag">--env</span> staging <span class="flag">\
+  --region</span>    us-central1 <span class="flag">--gh-org</span> bankme-tech <span class="flag">--gh-repo</span> bankme-frontend
 
-<span class="c"># production — adicionar --staging-project para o promote funcionar</span>
+<span class="c"># production — --staging-project permite que o SA de prod leia imagens do AR de staging</span>
 <span class="cmd">./scripts/setup-gcp.sh</span> <span class="flag">\
   --project</span>         bankme-frontend-prd <span class="flag">--env</span> production <span class="flag">\
-  --staging-project</span> bankme-frontend-stg ...</pre>
-  <div class="note">O script cria: Service Account · WIF (sem chave) · Artifact Registry · roles IAM (run.admin, artifactregistry.writer, secretmanager.secretAccessor) · vinculação WIF←SA</div>
-  <p style="font-size:13px;color:var(--muted);margin-top:10px;">Ao final, o script imprime os valores para usar no Passo 2.</p>
+  --region</span>          us-central1 <span class="flag">--gh-org</span> bankme-tech <span class="flag">--gh-repo</span> bankme-frontend <span class="flag">\
+  --staging-project</span> bankme-frontend-stg</pre>
+  <div class="note">Ao final de cada execução, o script imprime as variáveis prontas para copiar no GitHub (GCP_PROJECT_ID, GCP_REGION, GCP_SERVICE_ACCOUNT_EMAIL, GCP_WORKLOAD_IDENTITY_PROVIDER, AR_REPOSITORY).</div>
 </div>
 
 <!-- SLIDE 5: WIF detalhe -->
