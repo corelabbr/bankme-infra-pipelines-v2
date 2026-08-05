@@ -1,0 +1,30 @@
+name: Deploy to Develop
+
+run-name: Deploy develop from ${{ inputs.ref || github.ref_name }}
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag ou SHA para fazer deploy'
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-develop
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build & Deploy to Develop
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/build-and-deploy.yml@main
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      environment: develop
+      ref: ${{ inputs.ref || github.ref }}
+    secrets: inherit

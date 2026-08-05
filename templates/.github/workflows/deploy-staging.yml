@@ -1,0 +1,23 @@
+name: Deploy to Staging
+
+# Disparado automaticamente quando uma GitHub Release é publicada.
+# A tag da release (ex: v1.2.0) vira a tag da imagem Docker no Artifact Registry.
+run-name: Deploy ${{ github.event.release.tag_name }} to Staging
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  deploy:
+    name: Build & Deploy to Staging (${{ github.event.release.tag_name }})
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/build-and-deploy.yml@main
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      environment: staging
+      ref: ${{ github.event.release.tag_name }}
+      image-tag-prefix: ${{ github.event.release.tag_name }}
+      extra-tags: staging-latest
+    secrets: inherit

@@ -1,0 +1,43 @@
+name: Manage Traffic
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - develop
+          - staging
+          - production
+      action:
+        description: 'canary = envia X% para nova revisão | release-100 = 100% para a mais nova | rollback = volta para revisão específica'
+        required: true
+        type: choice
+        options:
+          - canary
+          - release-100
+          - rollback
+      traffic-percent:
+        description: 'Percentual de tráfego para canary (1–99). Ex: 10, 25, 50'
+        required: false
+        type: number
+        default: 10
+      target-revision:
+        description: 'Nome da revisão para rollback (ex: meu-servico-prod-a1b2c3d)'
+        required: false
+        type: string
+
+jobs:
+  traffic:
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/manage-traffic.yml@main
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      environment: ${{ inputs.environment }}
+      action: ${{ inputs.action }}
+      traffic-percent: ${{ fromJSON(inputs.traffic-percent) }}
+      target-revision: ${{ inputs.target-revision }}
+    secrets: inherit

@@ -1,0 +1,53 @@
+name: Manual Deploy
+
+# Deploy manual em develop ou staging.
+# Para produção use o workflow "Deploy to Production" que exige membership em @bankme-tech/seniors.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - develop
+          - staging
+      branch:
+        description: 'Branch, tag ou SHA para fazer deploy (default: branch atual)'
+        required: false
+        type: string
+      reason:
+        description: 'Reason for manual deploy'
+        required: false
+        type: string
+        default: 'Manual deployment'
+
+jobs:
+  deploy:
+    name: Build & Deploy to ${{ inputs.environment }}
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/build-and-deploy.yml@main
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      environment: ${{ inputs.environment }}
+      ref: ${{ inputs.branch || github.ref }}
+      image-tag-prefix: manual-deploy
+      extra-tags: manual-${{ github.run_number }}
+    secrets: inherit
+
+  summary:
+    name: Deployment Summary
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - run: |
+          echo "## Manual Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | ${{ inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch/Ref** | ${{ inputs.branch || github.ref }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Reason** | ${{ inputs.reason }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Triggered by** | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY

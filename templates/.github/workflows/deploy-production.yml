@@ -1,0 +1,35 @@
+name: Deploy to Production
+
+# Promove a imagem de staging para produção — sem rebuild.
+# A imagem exata que rodou em staging vai para produção (promote, don't rebuild).
+# Requer membership no time @bankme-tech/seniors.
+#
+# GitHub Environment Variable necessária no ambiente 'production':
+#   GCP_STAGING_PROJECT_ID — projeto GCP onde a imagem de staging está armazenada
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versão de staging para promover (ex: v1.2.0)'
+        required: true
+        type: string
+      reason:
+        description: 'Motivo do deploy (obrigatório para auditoria)'
+        required: true
+        type: string
+
+run-name: 'Promote ${{ inputs.version }} to Production (${{ github.actor }})'
+
+jobs:
+  promote:
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/deploy-production.yml@main
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      version: ${{ inputs.version }}
+      reason: ${{ inputs.reason }}
+      org: bankme-tech      # ajuste se necessário
+      team: seniors          # ajuste se necessário
+    secrets: inherit

@@ -1,0 +1,36 @@
+name: Cleanup PR Caches
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cleanup:
+    name: Delete PR caches
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete caches for this PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          REF="refs/pull/${PR_NUMBER}/merge"
+
+          CACHE_IDS=$(gh api \
+            "/repos/${{ github.repository }}/actions/caches" \
+            --paginate \
+            --jq ".actions_caches[] | select(.ref == \"$REF\") | .id")
+
+          if [ -z "$CACHE_IDS" ]; then
+            echo "No caches found for PR #${PR_NUMBER}"
+            exit 0
+          fi
+
+          for CACHE_ID in $CACHE_IDS; do
+            echo "Deleting cache ID: $CACHE_ID"
+            gh api --method DELETE \
+              "/repos/${{ github.repository }}/actions/caches/$CACHE_ID"
+          done
+          echo "Done."

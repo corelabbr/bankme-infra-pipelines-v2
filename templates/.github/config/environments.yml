@@ -1,0 +1,77 @@
+# Configuração de Ambientes — NOME_DO_PROJETO
+#
+# INSTRUÇÕES:
+#   1. Substitua NOME_DO_PROJETO pelo nome real (ex: bankme-frontend)
+#   2. Ajuste service-name e repository para o nome do serviço no Cloud Run / Artifact Registry
+#   3. Preencha runtime-env com as variáveis não-sensíveis do projeto
+#   4. Mantenha runtime-secrets apontando para secrets do GCP Secret Manager
+#      Formato: NOME_ENV_VAR: prefixo_projeto-NOME_SECRET:latest
+#   5. Se o projeto usa SSL certificates ou outros arquivos montados, use volume-secrets
+#
+# Configurações de infraestrutura GCP ficam nos GitHub Environment Variables
+# (Settings > Environments > Variables) — não coloque aqui.
+#
+# Fluxo de branches:
+#   feature/* / fix/* → develop   → deploy automático em develop
+#   GitHub Release    → staging   → deploy automático em staging
+#   manual (seniors)  → production → promote da imagem de staging
+
+service-name: NOME_DO_PROJETO       # nome do serviço no Cloud Run
+repository: NOME_DO_PROJETO         # nome do repo no Artifact Registry
+secret-prefix: nome_do_projeto      # prefixo dos secrets no Secret Manager (underscores)
+
+environments:
+  develop:
+    resources:
+      memory: 512Mi       # ajuste conforme necessidade
+      cpu: '1'
+      min-instances: 0    # 0 = sem custo quando ocioso
+      max-instances: 1
+      # cpu-allocation: always  # descomente para workers que precisam de CPU contínua
+    build:
+      node-version: '20'  # ajuste para a versão do projeto
+      # args:             # variáveis de build extras (ex: NODE_OPTIONS)
+      #   NODE_OPTIONS: '--max-old-space-size=4096'
+    runtime-env:
+      NODE_ENV: production
+      ENVIRONMENT: develop
+      # Adicione aqui todas as variáveis de ambiente não-sensíveis
+      # NEXT_PUBLIC_API_URL: https://api.dev.seudominio.com
+    # Secrets sensíveis vêm do GCP Secret Manager
+    # Preencha os valores em: console.cloud.google.com/security/secret-manager
+    runtime-secrets:
+      # Formato: NOME_VAR: prefixo_projeto-NOME_SECRET:latest
+      # Exemplo:
+      # AUTH0_SECRET: nome_do_projeto-AUTH0_SECRET:latest
+      # DATABASE_URL: nome_do_projeto-DATABASE_URL:latest
+
+  staging:
+    resources:
+      memory: 512Mi
+      cpu: '1'
+      min-instances: 0
+      max-instances: 1
+    build:
+      node-version: '20'
+    runtime-env:
+      NODE_ENV: production
+      ENVIRONMENT: staging
+      # Adicione variáveis de staging (geralmente diferentes de develop)
+    runtime-secrets:
+      # Mesmos secrets que develop (valores diferentes por ambiente são gerenciados no GCP)
+      # AUTH0_SECRET: nome_do_projeto-AUTH0_SECRET:latest
+
+  production:
+    resources:
+      memory: 1Gi
+      cpu: '1'
+      min-instances: 1    # mínimo 1 para garantir disponibilidade
+      max-instances: 3
+    build:
+      node-version: '20'
+    runtime-env:
+      NODE_ENV: production
+      ENVIRONMENT: production
+      # Adicione variáveis de produção
+    runtime-secrets:
+      # AUTH0_SECRET: nome_do_projeto-AUTH0_SECRET:latest

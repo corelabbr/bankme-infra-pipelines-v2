@@ -1,0 +1,31 @@
+name: Pull Request CI/CD
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ci-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Verifica se o autor tem permissão de merge na branch alvo.
+  # Bloqueia merge automaticamente após setup-branch-protection.sh ser executado.
+  validate-permission:
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/validate-merge-permission.yml@main
+    with:
+      org: bankme-tech
+      team: seniors       # ajuste para o time correto se necessário
+    secrets: inherit
+
+  ci:
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/cicd-pull-request.yml@main
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      node-version: '20'                        # ajuste para a versão do projeto
+      sonar-project-key: 'bankme-tech_REPO'     # ajuste para a chave do projeto no SonarCloud
+      # using-prisma: true                      # descomente se o projeto usa Prisma
+      # lint-command: 'yarn lint:ci'            # descomente se o lint usa comando diferente
+    secrets: inherit

@@ -1,0 +1,20 @@
+name: Sync main → develop
+
+# Roda após cada merge em main para manter develop atualizado.
+# Em caso de conflito, abre PR para resolução manual.
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync:
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/git-backmerge.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      source-branch: main
+      target-branches: develop
+      commit-message-suffix: '[skip ci]'
