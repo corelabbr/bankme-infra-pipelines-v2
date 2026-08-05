@@ -3,576 +3,561 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bankme Infra Pipelines v2</title>
+<title>Bankme Infra Pipelines v2 — Onboarding</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  :root {
-    --bg: #0d1117;
-    --bg2: #161b22;
-    --border: #30363d;
-    --green: #3fb950;
-    --blue: #58a6ff;
-    --purple: #bc8cff;
-    --orange: #ffa657;
-    --red: #f85149;
-    --text: #e6edf3;
-    --muted: #8b949e;
-  }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    height: 100vh;
-    overflow: hidden;
-    user-select: none;
-  }
-
-  .deck { width: 100%; height: 100vh; position: relative; }
-
-  .slide {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    padding: 60px 80px;
-    opacity: 0;
-    transform: translateX(40px);
-    transition: all .35s cubic-bezier(.4,0,.2,1);
-    pointer-events: none;
-  }
-
-  .slide.active {
-    opacity: 1;
-    transform: translateX(0);
-    pointer-events: all;
-  }
-
-  .slide.out {
-    opacity: 0;
-    transform: translateX(-40px);
-  }
-
-  /* ── Typography ── */
-  .eyebrow {
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--green);
-    margin-bottom: 16px;
-  }
-
-  h1 {
-    font-size: clamp(32px, 5vw, 56px);
-    font-weight: 700;
-    line-height: 1.1;
-    text-align: center;
-    margin-bottom: 16px;
-  }
-
-  h2 {
-    font-size: clamp(24px, 3.5vw, 40px);
-    font-weight: 700;
-    line-height: 1.2;
-    text-align: center;
-    margin-bottom: 32px;
-  }
-
-  .subtitle {
-    font-size: clamp(14px, 2vw, 20px);
-    color: var(--muted);
-    text-align: center;
-    max-width: 640px;
-    line-height: 1.6;
-  }
-
-  /* ── Cards ── */
-  .grid { display: grid; gap: 16px; width: 100%; max-width: 960px; }
-  .grid-2 { grid-template-columns: 1fr 1fr; }
-  .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
-
-  .card {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 24px;
-  }
-
-  .card-icon { font-size: 28px; margin-bottom: 12px; }
-  .card h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
-  .card p  { font-size: 14px; color: var(--muted); line-height: 1.5; }
-
-  /* ── Before/After table ── */
-  .ba-table {
-    width: 100%;
-    max-width: 800px;
-    border-collapse: separate;
-    border-spacing: 0;
-    border-radius: 12px;
-    overflow: hidden;
-    border: 1px solid var(--border);
-    font-size: 15px;
-  }
-
-  .ba-table th {
-    padding: 14px 20px;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-  }
-
-  .ba-table th:first-child { background: #1a0a0a; color: var(--red); }
-  .ba-table th:last-child  { background: #0a1a0a; color: var(--green); }
-
-  .ba-table td {
-    padding: 14px 20px;
-    border-top: 1px solid var(--border);
-    vertical-align: top;
-    line-height: 1.5;
-  }
-
-  .ba-table tr td:first-child { background: #110d0d; color: #c9a0a0; }
-  .ba-table tr td:last-child  { background: #0d110d; color: #a0c9a0; }
-
-  /* ── Flow diagram ── */
-  .flow {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0;
-    max-width: 760px;
-    width: 100%;
-    font-size: 15px;
-  }
-
-  .flow-step {
-    display: flex;
-    align-items: flex-start;
-    gap: 16px;
-  }
-
-  .flow-line {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    flex-shrink: 0;
-    width: 32px;
-  }
-
-  .flow-dot {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    margin-top: 4px;
-    flex-shrink: 0;
-  }
-
-  .flow-connector {
-    width: 2px;
-    flex: 1;
-    min-height: 24px;
-    background: var(--border);
-    margin: 4px 0;
-  }
-
-  .flow-content { padding-bottom: 8px; }
-  .flow-title   { font-weight: 600; margin-bottom: 2px; }
-  .flow-desc    { font-size: 13px; color: var(--muted); }
-
-  /* ── Steps ── */
-  .steps { display: flex; flex-direction: column; gap: 16px; max-width: 680px; width: 100%; }
-
-  .step {
-    display: flex;
-    gap: 20px;
-    align-items: flex-start;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px 24px;
-  }
-
-  .step-num {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: var(--green);
-    color: #000;
-    font-weight: 700;
-    font-size: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .step-body h3 { font-size: 16px; margin-bottom: 4px; }
-  .step-body p  { font-size: 14px; color: var(--muted); }
-
-  code {
-    background: #21262d;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 2px 8px;
-    font-size: 13px;
-    font-family: 'SF Mono', Consolas, monospace;
-    color: var(--blue);
-  }
-
-  /* ── Tag badge ── */
-  .badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-    margin: 4px;
-  }
-
-  .badge-green  { background: #1a3a1a; color: var(--green); border: 1px solid #2d5a2d; }
-  .badge-blue   { background: #0d2340; color: var(--blue);  border: 1px solid #1a3a6a; }
-  .badge-purple { background: #1e1040; color: var(--purple); border: 1px solid #3a2060; }
-  .badge-orange { background: #2a1a0a; color: var(--orange); border: 1px solid #5a3a1a; }
-
-  /* ── Divider line ── */
-  .divider {
-    width: 60px;
-    height: 3px;
-    background: var(--green);
-    border-radius: 2px;
-    margin: 16px auto 32px;
-  }
-
-  /* ── Controls ── */
-  nav {
-    position: fixed;
-    bottom: 28px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 40px;
-    padding: 10px 20px;
-  }
-
-  nav button {
-    background: none;
-    border: none;
-    color: var(--muted);
-    font-size: 18px;
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 6px;
-    transition: all .2s;
-  }
-
-  nav button:hover:not(:disabled) { color: var(--text); background: var(--border); }
-  nav button:disabled { opacity: .25; cursor: default; }
-
-  #counter { font-size: 13px; color: var(--muted); min-width: 48px; text-align: center; }
-
-  .dots { display: flex; gap: 6px; align-items: center; }
-
-  .dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--border);
-    transition: all .2s;
-    cursor: pointer;
-  }
-
-  .dot.on { background: var(--green); width: 20px; border-radius: 3px; }
-
-  /* ── Slide 1 accent ── */
-  .hero-accent {
-    font-size: clamp(48px, 8vw, 80px);
-    font-weight: 800;
-    background: linear-gradient(135deg, var(--green) 0%, var(--blue) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    line-height: 1;
-    margin-bottom: 8px;
-  }
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg:#0d1117; --bg2:#161b22; --bg3:#21262d;
+  --border:#30363d;
+  --green:#3fb950; --blue:#58a6ff; --purple:#bc8cff;
+  --orange:#ffa657; --red:#f85149; --yellow:#e3b341;
+  --text:#e6edf3; --muted:#8b949e; --muted2:#6e7681;
+}
+body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; height:100vh; overflow:hidden; }
+.deck { width:100%; height:100vh; position:relative; }
+.slide { position:absolute; inset:0; display:flex; flex-direction:column; padding:44px 60px 76px; opacity:0; pointer-events:none; transform:translateX(32px); transition:opacity .3s ease,transform .3s ease; overflow-y:auto; }
+.slide.active { opacity:1; pointer-events:all; transform:translateX(0); }
+.slide.out    { opacity:0; transform:translateX(-32px); }
+.slide-tag { display:inline-block; font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--green); margin-bottom:10px; padding:3px 10px; border:1px solid #2d5a2d; border-radius:20px; background:#0d1f0d; }
+h1 { font-size:clamp(20px,3.2vw,34px); font-weight:700; line-height:1.2; margin-bottom:6px; }
+h2 { font-size:clamp(15px,2vw,20px); font-weight:600; margin-bottom:12px; color:var(--text); }
+.lead { font-size:14px; color:var(--muted); margin-top:6px; line-height:1.6; max-width:720px; margin-bottom:16px; }
+pre { background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:14px 18px; font-family:'SF Mono',Consolas,monospace; font-size:12.5px; line-height:1.65; overflow-x:auto; color:#d2a8ff; margin:8px 0; }
+.c{color:var(--muted2)} .cmd{color:var(--green)} .str{color:#a5d6ff} .kw{color:var(--orange)} .flag{color:var(--yellow)}
+code { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:1px 6px; font-family:'SF Mono',Consolas,monospace; font-size:12px; color:var(--blue); }
+table { width:100%; border-collapse:collapse; border:1px solid var(--border); border-radius:8px; overflow:hidden; font-size:13px; }
+th { background:var(--bg2); padding:9px 13px; text-align:left; font-weight:600; font-size:11px; color:var(--muted); border-bottom:1px solid var(--border); }
+td { padding:9px 13px; border-bottom:1px solid var(--border); vertical-align:top; line-height:1.5; font-size:13px; }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:#1a1f26; }
+.cols  { display:grid; grid-template-columns:1fr 1fr;     gap:16px; }
+.cols3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+.card { background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:14px; }
+.card h3 { font-size:13px; font-weight:600; margin-bottom:5px; }
+.card p  { font-size:12px; color:var(--muted); line-height:1.5; }
+.note { background:#0d1f0d; border:1px solid #2d5a2d; border-radius:8px; padding:11px 15px; font-size:13px; line-height:1.5; color:#a0c9a0; margin:8px 0; }
+.warn-box { background:#1f1500; border:1px solid #5a3a00; border-radius:8px; padding:11px 15px; font-size:13px; line-height:1.5; color:#d4a060; margin:8px 0; }
+.checklist { list-style:none; display:flex; flex-direction:column; gap:8px; }
+.checklist li { display:flex; align-items:flex-start; gap:10px; font-size:13px; line-height:1.5; padding:10px 14px; background:var(--bg2); border:1px solid var(--border); border-radius:8px; }
+.checklist li .icon { font-size:15px; flex-shrink:0; margin-top:1px; }
+.steps { display:flex; flex-direction:column; gap:9px; }
+.step { display:flex; gap:13px; align-items:flex-start; background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:13px 16px; }
+.step-n { min-width:24px; height:24px; border-radius:50%; background:var(--green); color:#000; font-weight:700; font-size:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px; }
+.step-body strong { font-size:13px; display:block; margin-bottom:3px; }
+.step-body p { font-size:12px; color:var(--muted); line-height:1.5; }
+.step-body pre { margin-top:6px; font-size:11.5px; }
+.flow { display:flex; flex-direction:column; }
+.flow-row { display:flex; align-items:flex-start; gap:12px; }
+.flow-left { display:flex; flex-direction:column; align-items:center; width:22px; flex-shrink:0; }
+.flow-dot { width:10px; height:10px; border-radius:50%; margin-top:5px; }
+.flow-line { width:2px; background:var(--border); flex:1; min-height:20px; margin:3px 0; }
+.flow-content { padding-bottom:4px; flex:1; }
+.flow-title { font-size:13.5px; font-weight:600; line-height:1.4; }
+.flow-sub { font-size:12px; color:var(--muted); margin-top:3px; line-height:1.4; }
+.cover-title { font-size:clamp(36px,5.5vw,64px); font-weight:800; background:linear-gradient(135deg,var(--green),var(--blue)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; line-height:1; margin-bottom:12px; }
+.badges { display:flex; gap:8px; flex-wrap:wrap; margin-top:20px; }
+.badge { padding:5px 13px; border-radius:20px; font-size:12px; font-weight:600; }
+.badge-g { background:#0d1f0d; color:var(--green); border:1px solid #2d5a2d; }
+.badge-b { background:#0d1a2f; color:var(--blue);  border:1px solid #1a3a6a; }
+.badge-p { background:#1a1040; color:var(--purple); border:1px solid #3a2060; }
+.badge-o { background:#1f1000; color:var(--orange); border:1px solid #5a3000; }
+nav { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:12px; background:var(--bg2); border:1px solid var(--border); border-radius:40px; padding:7px 16px; z-index:100; }
+nav button { background:none; border:none; color:var(--muted); font-size:15px; cursor:pointer; padding:4px 8px; border-radius:6px; transition:all .15s; }
+nav button:hover:not(:disabled) { color:var(--text); background:var(--border); }
+nav button:disabled { opacity:.2; cursor:default; }
+#ctr { font-size:12px; color:var(--muted); min-width:44px; text-align:center; }
+.dots { display:flex; gap:4px; align-items:center; }
+.dot { width:5px; height:5px; border-radius:50%; background:var(--border); cursor:pointer; transition:all .2s; }
+.dot.on { background:var(--green); width:16px; border-radius:3px; }
+.snum { position:fixed; top:14px; right:22px; font-size:11px; color:var(--muted2); z-index:100; }
 </style>
 </head>
 <body>
-
+<div class="snum" id="snum"></div>
 <div class="deck" id="deck">
 
-  <!-- ── Slide 1: Título ── -->
-  <div class="slide active" data-slide="0">
-    <div class="eyebrow">Corelab → Bankme</div>
-    <div class="hero-accent">Infra Pipelines v2</div>
-    <h1 style="font-size: clamp(20px,3vw,32px); font-weight:400; color: var(--muted); margin-bottom:40px;">
-      Um pipeline centralizado para todos os projetos
-    </h1>
-    <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
-      <span class="badge badge-green">✓ WIF — sem chaves</span>
-      <span class="badge badge-blue">✓ GCP Secret Manager</span>
-      <span class="badge badge-purple">✓ Promote, não rebuild</span>
-      <span class="badge badge-orange">✓ Canary + Rollback</span>
+<!-- SLIDE 0: Capa -->
+<div class="slide active">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;">
+    <div class="slide-tag">Guia de Onboarding</div>
+    <div class="cover-title">Bankme Infra<br>Pipelines v2</div>
+    <p style="font-size:16px;color:var(--muted);max-width:600px;line-height:1.6;margin-top:8px;">Pipeline centralizado para todos os projetos da Bankme.<br>WIF · GCP Secret Manager · Promote, não rebuild · Canary + Rollback</p>
+    <div class="badges">
+      <span class="badge badge-g">✓ Sem GCP_SA_KEY</span>
+      <span class="badge badge-b">✓ Secrets nunca saem do GCP</span>
+      <span class="badge badge-p">✓ Imagem de staging = produção</span>
+      <span class="badge badge-o">✓ Rollback em 1 clique</span>
     </div>
+    <p style="margin-top:28px;font-size:12px;color:var(--muted2);">← → para navegar · clique nas bolinhas · swipe no celular</p>
   </div>
-
-  <!-- ── Slide 2: O problema ── -->
-  <div class="slide" data-slide="1">
-    <div class="eyebrow">O problema hoje</div>
-    <h2>Cada projeto é uma ilha</h2>
-    <div class="divider"></div>
-    <table class="ba-table">
-      <thead>
-        <tr>
-          <th>Hoje</th>
-          <th>Com o v2</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Pipeline diferente em cada repositório</td>
-          <td>Um padrão para todos os projetos</td>
-        </tr>
-        <tr>
-          <td><code>GCP_SA_KEY</code> no GitHub — chave que vence e pode vazar</td>
-          <td>WIF — autenticação sem nenhuma chave armazenada</td>
-        </tr>
-        <tr>
-          <td>Deploy em produção reconstrói a imagem do zero</td>
-          <td>Promote — a imagem exata de staging vai para produção</td>
-        </tr>
-        <tr>
-          <td>Qualquer dev pode disparar deploy em produção</td>
-          <td>Gate de permissão — só o time <code>seniors</code> promove</td>
-        </tr>
-        <tr>
-          <td>Rollback manual, arriscado e demorado</td>
-          <td>Rollback em 1 clique para qualquer revisão anterior</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- ── Slide 3: O fluxo ── -->
-  <div class="slide" data-slide="2">
-    <div class="eyebrow">Como funciona</div>
-    <h2>O fluxo completo</h2>
-    <div class="divider"></div>
-    <div class="flow">
-      <div class="flow-step">
-        <div class="flow-line">
-          <div class="flow-dot" style="background:var(--blue)"></div>
-          <div class="flow-connector"></div>
-        </div>
-        <div class="flow-content">
-          <div class="flow-title">PR aberto → CI automático</div>
-          <div class="flow-desc">Typecheck · Lint · Testes · Build · Audit · SonarCloud · Validação de permissão</div>
-        </div>
-      </div>
-      <div class="flow-step">
-        <div class="flow-line">
-          <div class="flow-dot" style="background:var(--green)"></div>
-          <div class="flow-connector"></div>
-        </div>
-        <div class="flow-content">
-          <div class="flow-title">Merge em develop → Deploy automático</div>
-          <div class="flow-desc">Build Docker → push Artifact Registry → deploy Cloud Run (develop)</div>
-        </div>
-      </div>
-      <div class="flow-step">
-        <div class="flow-line">
-          <div class="flow-dot" style="background:var(--orange)"></div>
-          <div class="flow-connector"></div>
-        </div>
-        <div class="flow-content">
-          <div class="flow-title">GitHub Release → Deploy automático em staging</div>
-          <div class="flow-desc">Build Docker → push AR com tag da versão → deploy Cloud Run (staging)</div>
-        </div>
-      </div>
-      <div class="flow-step">
-        <div class="flow-line">
-          <div class="flow-dot" style="background:var(--purple)"></div>
-          <div class="flow-connector"></div>
-        </div>
-        <div class="flow-content">
-          <div class="flow-title">Senior promove para produção (manual)</div>
-          <div class="flow-desc">Copia imagem de staging → produção. Sem rebuild. Canary opcional: 10% → 50% → 100%</div>
-        </div>
-      </div>
-      <div class="flow-step">
-        <div class="flow-line">
-          <div class="flow-dot" style="background:var(--red)"></div>
-        </div>
-        <div class="flow-content">
-          <div class="flow-title">Problema em produção → Rollback imediato</div>
-          <div class="flow-desc">1 clique. Volta para qualquer revisão anterior. Zero downtime.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Slide 4: Segurança ── -->
-  <div class="slide" data-slide="3">
-    <div class="eyebrow">Segurança e controle</div>
-    <h2>Proteção em cada camada</h2>
-    <div class="divider"></div>
-    <div class="grid grid-2" style="max-width:820px;">
-      <div class="card">
-        <div class="card-icon">🔐</div>
-        <h3>Sem chaves no GitHub</h3>
-        <p>Workload Identity Federation — o GCP valida a identidade pelo contexto do workflow. Nenhuma credencial armazenada.</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">🔒</div>
-        <h3>Secrets nunca saem do GCP</h3>
-        <p>Auth0, banco de dados, API keys — tudo no GCP Secret Manager. O Cloud Run os lê diretamente na inicialização.</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">🎯</div>
-        <h3>Deploy controlado</h3>
-        <p>Produção só pelo time <code>seniors</code>. Branch protection exige CI verde e aprovação antes de qualquer merge.</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">🧹</div>
-        <h3>Limpeza automática</h3>
-        <p>Artifact Registry limpo toda semana — imagens antigas deletadas automaticamente. Sem custo acumulando.</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Slide 5: Como adotar ── -->
-  <div class="slide" data-slide="4">
-    <div class="eyebrow">Adoção</div>
-    <h2>3 scripts. ~2 horas por projeto.</h2>
-    <div class="divider"></div>
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">1</div>
-        <div class="step-body">
-          <h3>Configurar GCP</h3>
-          <p>Cria Service Account, configura WIF, Artifact Registry e permissões.</p>
-          <p style="margin-top:8px;"><code>./setup-gcp.sh --project meu-projeto --env develop ...</code></p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-num">2</div>
-        <div class="step-body">
-          <h3>Configurar GitHub</h3>
-          <p>Cria environments, adiciona variáveis GCP e o token de packages.</p>
-          <p style="margin-top:8px;"><code>./setup-github.sh --owner bankme-tech --repo meu-repo</code></p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-num">3</div>
-        <div class="step-body">
-          <h3>Copiar templates + criar secrets</h3>
-          <p>9 workflows prontos. CODEOWNERS. environments.yml. Secrets criados com placeholder para preenchimento.</p>
-          <p style="margin-top:8px;"><code>./setup-secrets.sh --project meu-projeto</code></p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Slide 6: O pacote ── -->
-  <div class="slide" data-slide="5">
-    <div class="eyebrow">O que a Bankme recebe</div>
-    <h2>Tudo documentado e testado</h2>
-    <div class="divider"></div>
-    <div class="grid grid-3" style="max-width:960px;">
-      <div class="card">
-        <div class="card-icon">⚙️</div>
-        <h3>8 workflows prontos</h3>
-        <p>CI · Deploy develop · Staging · Produção · Hotfix · Canary · Rollback · Backmerge · Limpeza</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">🛠️</div>
-        <h3>4 scripts de setup</h3>
-        <p>GCP · GitHub · Secrets · Branch protection. Tudo automatizado, idempotente, com saída clara.</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">📋</div>
-        <h3>Templates para cada projeto</h3>
-        <p>Copie, ajuste 3 variáveis, comite. O projeto está no pipeline.</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">📖</div>
-        <h3>Documentação completa</h3>
-        <p>ONBOARDING passo a passo. Seção de migração para projetos existentes. FAQ de erros comuns.</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">🔬</div>
-        <h3>Projeto de referência</h3>
-        <p><code>bankme-frontend</code> configurado e funcionando. Cada workflow testado de ponta a ponta.</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">🏷️</div>
-        <h3>Versionamento controlado</h3>
-        <p>Tag <code>v1</code>. Projetos só recebem atualizações quando você decide. Sem surpresas.</p>
-      </div>
-    </div>
-  </div>
-
 </div>
 
-<!-- ── Navigation ── -->
+<!-- SLIDE 1: Fluxo -->
+<div class="slide">
+  <div class="slide-tag">Visão geral</div>
+  <h1>Fluxo completo do pipeline</h1>
+  <div class="flow" style="margin-top:16px;">
+    <div class="flow-row"><div class="flow-left"><div class="flow-dot" style="background:var(--blue)"></div><div class="flow-line"></div></div><div class="flow-content"><div class="flow-title">Feature branch → PR aberto</div><div class="flow-sub"><code>cicd-pull-request.yml</code> → validate-permission · typecheck · lint · test · build · audit · SonarCloud</div></div></div>
+    <div class="flow-row"><div class="flow-left"><div class="flow-dot" style="background:var(--green)"></div><div class="flow-line"></div></div><div class="flow-content"><div class="flow-title">PR mergeado em develop → Deploy automático</div><div class="flow-sub"><code>deploy-develop.yml</code> → build Docker → push Artifact Registry → deploy Cloud Run (develop)</div></div></div>
+    <div class="flow-row"><div class="flow-left"><div class="flow-dot" style="background:var(--orange)"></div><div class="flow-line"></div></div><div class="flow-content"><div class="flow-title">GitHub Release publicada (ex: v1.2.0) → Deploy automático em staging</div><div class="flow-sub"><code>deploy-staging.yml</code> → build Docker → push AR com tag da versão → deploy Cloud Run (staging)</div></div></div>
+    <div class="flow-row"><div class="flow-left"><div class="flow-dot" style="background:var(--purple)"></div><div class="flow-line"></div></div><div class="flow-content"><div class="flow-title">Senior aciona deploy manual → Produção</div><div class="flow-sub"><code>deploy-production.yml</code> → busca digest de staging → copia para AR de produção → deploy (promote, não rebuild)</div></div></div>
+    <div class="flow-row"><div class="flow-left"><div class="flow-dot" style="background:var(--yellow)"></div><div class="flow-line"></div></div><div class="flow-content"><div class="flow-title">Canary opcional após produção</div><div class="flow-sub"><code>manage-traffic.yml</code> → canary X% → release-100% → ou rollback para revisão anterior</div></div></div>
+    <div class="flow-row"><div class="flow-left"><div class="flow-dot" style="background:var(--red)"></div></div><div class="flow-content"><div class="flow-title">Hotfix → hotfix/* mergeado em main</div><div class="flow-sub"><code>deploy-hotfix.yml</code> → build + push para AR de staging com tag <code>hotfix-*</code> (sem deploy automático) → Senior promove via deploy-production.yml</div></div></div>
+  </div>
+</div>
+
+<!-- SLIDE 2: Pré-requisitos -->
+<div class="slide">
+  <div class="slide-tag">Antes de começar</div>
+  <h1>Pré-requisitos</h1>
+  <ul class="checklist" style="margin-top:16px;">
+    <li><span class="icon">□</span><div><strong>gcloud CLI instalado e autenticado</strong> — <code>gcloud auth login</code></div></li>
+    <li><span class="icon">□</span><div><strong>gh CLI instalado e autenticado</strong> — <code>gh auth login</code></div></li>
+    <li><span class="icon">□</span><div><strong>Acesso Owner/Editor nos 3 projetos GCP</strong> (develop, staging, production)</div></li>
+    <li><span class="icon">□</span><div><strong>Acesso Admin no repositório GitHub</strong></div></li>
+    <li><span class="icon">□</span><div><strong>3 projetos GCP criados</strong> — um por ambiente</div></li>
+    <li><span class="icon">□</span><div><strong>python3 instalado</strong> — os scripts leem o environments.yml</div></li>
+    <li><span class="icon">⚠</span><div><strong>Time <code>seniors</code> criado na org GitHub</strong> — sem ele, validate-permission e deploy-production falham<br><span style="font-size:11px;color:var(--muted)">github.com/orgs/bankme-tech/teams</span></div></li>
+    <li><span class="icon">⚠</span><div><strong>Projeto criado no SonarCloud</strong> — necessário para o CI analisar qualidade<br><span style="font-size:11px;color:var(--muted)">sonarcloud.io</span></div></li>
+  </ul>
+</div>
+
+<!-- SLIDE 3: Versionamento -->
+<div class="slide">
+  <div class="slide-tag">Como funciona</div>
+  <h1>Versionamento</h1>
+  <p class="lead">Cada projeto referencia o infra-pipelines com <code>@v1</code>.</p>
+  <pre><span class="c"># Em cada workflow do projeto:</span>
+<span class="kw">uses:</span> <span class="str">bankme-tech/infra-pipelines-v2/.github/workflows/build-and-deploy.yml@v1</span></pre>
+  <div class="note">Pense em <code>v1</code> como um <strong>ponteiro fixo</strong>. Quando você atualiza o infra-pipelines e quer que todos os projetos recebam a mudança, move o ponteiro:</div>
+  <pre><span class="c"># Após commit e push no infra-pipelines:</span>
+<span class="cmd">git tag -f v1 && git push origin v1 --force</span></pre>
+  <p style="font-size:13px;color:var(--muted);margin:10px 0;">Todos os projetos passam a usar a versão nova automaticamente na próxima run.</p>
+  <h2>Quando a mudança é grande — crie uma tag nova</h2>
+  <pre><span class="cmd">git tag v2 && git push origin v2</span>
+<span class="c"># Cada projeto migra ajustando @v1 → @v2 nos seus workflows no seu tempo</span></pre>
+  <div class="warn-box"><strong>Por que não usar <code>@main</code>?</strong> Qualquer commit — até experimental — chegaria a todos os projetos instantaneamente. Com <code>@v1</code> você controla exatamente quando uma mudança entra em vigor.</div>
+</div>
+
+<!-- SLIDE 4: Passo 1 GCP -->
+<div class="slide">
+  <div class="slide-tag">Passo 1</div>
+  <h1>Configurar o GCP — por ambiente</h1>
+  <p class="lead">Execute uma vez para cada ambiente: develop, staging, production.</p>
+  <pre><span class="c"># Clonar e preparar</span>
+<span class="cmd">git clone</span> https://github.com/bankme-tech/infra-pipelines-v2.git
+<span class="cmd">cd</span> infra-pipelines-v2 <span class="cmd">&&</span> <span class="cmd">chmod +x</span> scripts/*.sh
+
+<span class="c"># develop</span>
+<span class="cmd">./scripts/setup-gcp.sh</span> <span class="flag">\
+  --project</span>   bankme-frontend-dev <span class="flag">--env</span> develop <span class="flag">\
+  --region</span>    us-central1 <span class="flag">--gh-org</span> bankme-tech <span class="flag">--gh-repo</span> bankme-frontend
+
+<span class="c"># staging (mesmo comando com --project e --env diferentes)</span>
+<span class="cmd">./scripts/setup-gcp.sh</span> <span class="flag">--project</span> bankme-frontend-stg <span class="flag">--env</span> staging ...
+
+<span class="c"># production — adicionar --staging-project para o promote funcionar</span>
+<span class="cmd">./scripts/setup-gcp.sh</span> <span class="flag">\
+  --project</span>         bankme-frontend-prd <span class="flag">--env</span> production <span class="flag">\
+  --staging-project</span> bankme-frontend-stg ...</pre>
+  <div class="note">O script cria: Service Account · WIF (sem chave) · Artifact Registry · roles IAM (run.admin, artifactregistry.writer, secretmanager.secretAccessor) · vinculação WIF←SA</div>
+  <p style="font-size:13px;color:var(--muted);margin-top:10px;">Ao final, o script imprime os valores para usar no Passo 2.</p>
+</div>
+
+<!-- SLIDE 5: WIF detalhe -->
+<div class="slide">
+  <div class="slide-tag">Passo 1 — Detalhe</div>
+  <h1>Workload Identity Federation por ambiente</h1>
+  <p class="lead">O WIF substitui o GCP_SA_KEY — o GitHub autentica no GCP sem nenhuma chave armazenada. A condition define quais runs são aceitas.</p>
+  <table style="margin-bottom:16px;">
+    <thead><tr><th>Ambiente</th><th>Attribute Condition</th><th>Por quê</th></tr></thead>
+    <tbody>
+      <tr><td><strong>develop</strong></td><td>Qualquer ref do repo</td><td>Deploy em develop pode vir de qualquer branch (dispatch manual)</td></tr>
+      <tr><td><strong>staging</strong></td><td>Tags <code>v*</code> e branch <code>main</code></td><td>Tags para releases normais; main para builds de hotfix</td></tr>
+      <tr><td><strong>production</strong></td><td>Somente branch <code>main</code></td><td>Promote só roda da branch principal</td></tr>
+    </tbody>
+  </table>
+  <div class="cols">
+    <div>
+      <h2>APIs habilitadas pelo script</h2>
+      <ul style="list-style:none;font-size:13px;display:flex;flex-direction:column;gap:5px;">
+        <li>✓ <code>run.googleapis.com</code></li>
+        <li>✓ <code>artifactregistry.googleapis.com</code></li>
+        <li>✓ <code>secretmanager.googleapis.com</code></li>
+        <li>✓ <code>iam.googleapis.com</code></li>
+        <li>✓ <code>iamcredentials.googleapis.com</code></li>
+      </ul>
+    </div>
+    <div>
+      <h2>Roles IAM concedidas ao SA</h2>
+      <ul style="list-style:none;font-size:13px;display:flex;flex-direction:column;gap:5px;">
+        <li>✓ <code>roles/run.admin</code></li>
+        <li>✓ <code>roles/artifactregistry.writer</code></li>
+        <li>✓ <code>roles/secretmanager.secretAccessor</code></li>
+        <li>✓ <code>roles/iam.serviceAccountUser</code></li>
+        <li style="color:var(--muted)">✓ <code>roles/artifactregistry.reader</code> no staging (só prod)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 6: Passo 2 GitHub -->
+<div class="slide">
+  <div class="slide-tag">Passo 2</div>
+  <h1>Configurar o GitHub</h1>
+  <p class="lead">O script cria os environments, variáveis e secrets — interativamente com os valores do Passo 1.</p>
+  <pre><span class="cmd">./scripts/setup-github.sh</span> <span class="flag">--owner</span> bankme-tech <span class="flag">--repo</span> bankme-frontend</pre>
+  <h2 style="margin-top:16px;">O que é criado</h2>
+  <table>
+    <thead><tr><th>O que</th><th>Onde</th><th>Valor</th></tr></thead>
+    <tbody>
+      <tr><td>GitHub Environments</td><td>develop · staging · production</td><td>—</td></tr>
+      <tr><td><code>GCP_PROJECT_ID</code></td><td>Cada environment</td><td>ID do projeto GCP</td></tr>
+      <tr><td><code>GCP_REGION</code></td><td>Cada environment</td><td>ex: us-central1</td></tr>
+      <tr><td><code>GCP_SERVICE_ACCOUNT_EMAIL</code></td><td>Cada environment</td><td>github-deployer@projeto.iam…</td></tr>
+      <tr><td><code>GCP_WORKLOAD_IDENTITY_PROVIDER</code></td><td>Cada environment</td><td>Resource name do WIF provider</td></tr>
+      <tr><td><code>AR_REPOSITORY</code></td><td>Cada environment</td><td>Nome do repo no Artifact Registry</td></tr>
+      <tr><td><code>GCP_STAGING_PROJECT_ID</code></td><td>Só production</td><td>ID do projeto de staging (para o promote)</td></tr>
+      <tr><td><code>GH_PACKAGES_TOKEN</code></td><td>Repositório (secret)</td><td>Token com read:packages para @bankme-tech/*</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- SLIDE 7: Passo 3 Templates -->
+<div class="slide">
+  <div class="slide-tag">Passo 3</div>
+  <h1>Copiar os arquivos de workflow</h1>
+  <p class="lead">O infra-pipelines tem uma pasta <code>templates/</code> com tudo pronto para copiar.</p>
+  <div class="warn-box" style="margin-bottom:14px;"><strong>Projetos existentes</strong> que usam o infra-pipelines antigo (com GCP_SA_KEY): veja o slide "Migração" no final.</div>
+  <pre><span class="c"># Dentro do repositório do projeto</span>
+<span class="cmd">mkdir -p</span> .github/workflows .github/config
+
+<span class="c"># 9 workflows prontos</span>
+<span class="cmd">cp</span> /caminho/infra-pipelines-v2/templates/.github/workflows/*.yml .github/workflows/
+
+<span class="c"># Config de ambientes + CODEOWNERS + SonarCloud</span>
+<span class="cmd">cp</span> /caminho/infra-pipelines-v2/templates/.github/config/environments.yml .github/config/
+<span class="cmd">cp</span> /caminho/infra-pipelines-v2/templates/.github/CODEOWNERS .github/CODEOWNERS
+<span class="cmd">cp</span> /caminho/infra-pipelines-v2/templates/sonar-project.properties .</pre>
+  <div class="cols3" style="margin-top:14px;">
+    <div class="card"><code style="font-size:11px;">cicd-pull-request</code><p>CI de PR</p></div>
+    <div class="card"><code style="font-size:11px;">deploy-develop</code><p>Deploy develop</p></div>
+    <div class="card"><code style="font-size:11px;">deploy-staging</code><p>Deploy staging</p></div>
+    <div class="card"><code style="font-size:11px;">deploy-production</code><p>Promote prod</p></div>
+    <div class="card"><code style="font-size:11px;">deploy-hotfix</code><p>Build hotfix</p></div>
+    <div class="card"><code style="font-size:11px;">deploy-manual</code><p>Deploy manual</p></div>
+    <div class="card"><code style="font-size:11px;">manage-traffic</code><p>Canary/rollback</p></div>
+    <div class="card"><code style="font-size:11px;">sync-main-to-develop</code><p>Backmerge auto</p></div>
+    <div class="card"><code style="font-size:11px;">cleanup-pr-caches</code><p>Limpa cache GHA</p></div>
+  </div>
+</div>
+
+<!-- SLIDE 8: SonarCloud + CODEOWNERS -->
+<div class="slide">
+  <div class="slide-tag">Passos 3b e 3c</div>
+  <h1>SonarCloud e CODEOWNERS</h1>
+  <div class="cols">
+    <div>
+      <h2>SonarCloud</h2>
+      <div class="steps">
+        <div class="step"><div class="step-n">1</div><div class="step-body"><strong>Criar projeto em sonarcloud.io</strong><p>Use o repositório GitHub como fonte.</p></div></div>
+        <div class="step"><div class="step-n">2</div><div class="step-body"><strong>Editar sonar-project.properties</strong><pre>sonar.projectKey=bankme-tech_meu-repo
+sonar.organization=bankme-tech</pre></div></div>
+        <div class="step"><div class="step-n">3</div><div class="step-body"><strong>Editar cicd-pull-request.yml</strong><pre><span class="kw">sonar-project-key:</span> <span class="str">'bankme-tech_meu-repo'</span>
+<span class="c"># using-prisma: true  (se usa Prisma)</span>
+<span class="c"># lint-command: 'yarn lint:ci'  (se Biome)</span></pre></div></div>
+      </div>
+    </div>
+    <div>
+      <h2>CODEOWNERS</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Define quem precisa aprovar PRs que tocam em arquivos específicos. Ativo após branch protection (Passo 9).</p>
+      <pre><span class="c"># Infra e Dockerfile → só seniors aprovam</span>
+.github/     @bankme-tech/seniors
+Dockerfile   @bankme-tech/seniors
+
+<span class="c"># Código da aplicação → qualquer dev</span>
+<span class="c"># src/  @bankme-tech/developers</span></pre>
+      <h2 style="margin-top:16px;">deploy-production.yml</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:8px;">Único arquivo que precisa ser ajustado além do CI:</p>
+      <pre><span class="kw">with:</span>
+  <span class="kw">org:</span>  <span class="str">bankme-tech</span>
+  <span class="kw">team:</span> <span class="str">seniors</span>   <span class="c"># time autorizado</span></pre>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 9: environments.yml -->
+<div class="slide">
+  <div class="slide-tag">Passo 4</div>
+  <h1>Adaptar o environments.yml</h1>
+  <div class="cols">
+    <pre style="flex:1;font-size:12px;"><span class="kw">service-name:</span> <span class="str">meu-projeto</span>   <span class="c"># Cloud Run + AR</span>
+<span class="kw">repository:</span>   <span class="str">meu-projeto</span>
+
+<span class="kw">environments:</span>
+  <span class="kw">develop:</span>
+    <span class="kw">resources:</span>
+      <span class="kw">memory:</span>        <span class="str">512Mi</span>
+      <span class="kw">cpu:</span>           <span class="str">'1'</span>
+      <span class="kw">min-instances:</span> <span class="str">0</span>   <span class="c"># 0 = sem custo ocioso</span>
+      <span class="kw">max-instances:</span> <span class="str">1</span>
+      <span class="c"># cpu-allocation: always  # para workers</span>
+    <span class="kw">build:</span>
+      <span class="kw">node-version:</span> <span class="str">'20'</span>
+    <span class="kw">runtime-env:</span>          <span class="c"># variáveis NÃO-sensíveis</span>
+      <span class="kw">NODE_ENV:</span>  <span class="str">production</span>
+      <span class="kw">API_URL:</span>   <span class="str">https://api.dev.ex.com</span>
+    <span class="kw">runtime-secrets:</span>      <span class="c"># GCP Secret Manager</span>
+      <span class="kw">AUTH0_SECRET:</span> <span class="str">meu_proj-AUTH0_SECRET:latest</span>
+      <span class="kw">DATABASE_URL:</span> <span class="str">meu_proj-DATABASE_URL:latest</span>
+    <span class="c"># Para PostgreSQL com SSL:</span>
+    <span class="c"># volume-secrets:</span>
+    <span class="c">#   '/secrets/pg-ssl-ca/server-ca.pem': PG_SSL_CA:latest</span></pre>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div class="card"><h3>runtime-env</h3><p>Variáveis <strong>não-sensíveis</strong>. URLs de APIs, feature flags. Ficam em texto puro no YAML — diferem por ambiente.</p></div>
+      <div class="card"><h3>runtime-secrets</h3><p>Secrets do <strong>GCP Secret Manager</strong>. Formato: <code>prefixo-NOME:latest</code>. O Cloud Run os lê na inicialização do container.</p></div>
+      <div class="card"><h3>volume-secrets</h3><p>Certificados SSL e arquivos montados no disco. Necessário para PostgreSQL com SSL. Usado em api-oracle, api-bifrost, api-data-warehouse.</p></div>
+      <div class="note"><strong>Infra GCP</strong> (project-id, region, WIF) fica nos <strong>GitHub Environment Variables</strong> — não no YAML.</div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 10: Secrets GCP -->
+<div class="slide">
+  <div class="slide-tag">Passo 6</div>
+  <h1>Criar os secrets no GCP Secret Manager</h1>
+  <p class="lead">O script lê o <code>environments.yml</code> e cria todos os secrets com valor <code>CHANGEME</code>.</p>
+  <pre><span class="c"># Rodar dentro do diretório do projeto, para cada ambiente GCP</span>
+<span class="cmd">/caminho/infra-pipelines-v2/scripts/setup-secrets.sh</span> <span class="flag">--project</span> bankme-frontend-dev
+<span class="cmd">/caminho/infra-pipelines-v2/scripts/setup-secrets.sh</span> <span class="flag">--project</span> bankme-frontend-stg
+<span class="cmd">/caminho/infra-pipelines-v2/scripts/setup-secrets.sh</span> <span class="flag">--project</span> bankme-frontend-prd</pre>
+  <div class="cols" style="margin-top:14px;">
+    <div>
+      <h2>Preencher valores reais</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:8px;">Via Console GCP:</p>
+      <div class="note" style="font-size:12px;">console.cloud.google.com/security/secret-manager?project=bankme-frontend-dev</div>
+      <p style="font-size:13px;color:var(--muted);margin:10px 0 8px;">Via CLI:</p>
+      <pre><span class="cmd">echo -n</span> <span class="str">"valor-real"</span> | <span class="cmd">gcloud secrets versions add</span> NOME <span class="flag">\
+  --project</span>=bankme-frontend-dev <span class="flag">--data-file</span>=-</pre>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:10px;"><h3>O pipeline funciona com CHANGEME</h3><p>O deploy roda sem erros de infraestrutura. A aplicação pode falhar no runtime (Auth0, banco) até os valores reais serem preenchidos.</p></div>
+      <div class="card"><h3>Mesmo nome, valores por ambiente</h3><p><code>meu-projeto-AUTH0_SECRET</code> existe nos 3 projetos GCP com valores diferentes para cada ambiente.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 11: Commit e testar -->
+<div class="slide">
+  <div class="slide-tag">Passos 7 e 8</div>
+  <h1>Primeiro commit e testes</h1>
+  <div class="cols">
+    <div>
+      <h2>Commit</h2>
+      <pre><span class="cmd">git add</span> .github/ sonar-project.properties
+<span class="cmd">git commit -m</span> <span class="str">"feat: configure pipeline v2"</span>
+<span class="cmd">git push origin main</span></pre>
+      <h2 style="margin-top:16px;">Teste 1 — CI de PR</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:8px;">Abra um Pull Request. Deve aparecer:</p>
+      <ul style="list-style:none;font-size:13px;display:flex;flex-direction:column;gap:5px;">
+        <li>✓ <code>validate-permission</code></li>
+        <li>✓ <code>ci / CI</code> — typecheck · lint · test · build · audit</li>
+        <li>✓ <code>ci / SonarCloud Analysis</code></li>
+      </ul>
+      <div class="note" style="margin-top:10px;font-size:12px;">validate-permission pode falhar se o dev não está em seniors — comportamento correto. Só bloqueia merge após branch protection (Passo 9).</div>
+    </div>
+    <div>
+      <h2>Teste 2 — Deploy develop</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:6px;">Push em develop ou dispare manualmente:</p>
+      <div class="note" style="font-size:12px;">GitHub Actions → Deploy to Develop → Run workflow</div>
+      <h2 style="margin-top:14px;">Teste 3 — Staging</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:6px;">Crie uma GitHub Release com tag v0.0.1:</p>
+      <div class="note" style="font-size:12px;">GitHub → Releases → Draft a new release → Tag: v0.0.1 → Publish</div>
+      <h2 style="margin-top:14px;">Teste 4 — Produção</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:6px;">Disparo manual:</p>
+      <pre style="font-size:11.5px;"><span class="c"># GitHub Actions → Deploy to Production → Run workflow</span>
+version: v0.0.1
+reason: <span class="str">"Teste inicial do pipeline"</span></pre>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 12: Branch protection -->
+<div class="slide">
+  <div class="slide-tag">Passo 9</div>
+  <h1>Branch protection</h1>
+  <p class="lead">Requer GitHub Team ou Enterprise. Execute após validar que o pipeline funciona.</p>
+  <pre><span class="cmd">/caminho/infra-pipelines-v2/scripts/setup-branch-protection.sh</span> bankme-tech bankme-frontend</pre>
+  <h2 style="margin-top:16px;">O que é configurado</h2>
+  <table>
+    <thead><tr><th>Branch / Environment</th><th>Restrição aplicada</th></tr></thead>
+    <tbody>
+      <tr><td><code>main</code></td><td>PR obrigatório · CI deve passar · merge restrito ao time seniors · code owner review</td></tr>
+      <tr><td><code>develop</code></td><td>PR obrigatório · CI deve passar</td></tr>
+      <tr><td>Environment <code>production</code></td><td>Só deploya de main ou tags v* · aprovação manual do time seniors</td></tr>
+      <tr><td>Environment <code>staging</code></td><td>Só deploya de tags v*</td></tr>
+      <tr><td>Environment <code>develop</code></td><td>Só deploya da branch develop</td></tr>
+    </tbody>
+  </table>
+  <div class="note" style="margin-top:14px;">Após o script rodar, o <code>validate-merge-permission</code> passa a <strong>bloquear merges</strong> para quem não está no time seniors. Antes disso, é apenas informativo.</div>
+</div>
+
+<!-- SLIDE 13: Referência Workflows -->
+<div class="slide">
+  <div class="slide-tag">Referência</div>
+  <h1>Todos os workflows</h1>
+  <table>
+    <thead><tr><th>Workflow</th><th>Gatilho</th><th>O que faz</th></tr></thead>
+    <tbody>
+      <tr><td><code>cicd-pull-request.yml</code></td><td>PR aberto/atualizado</td><td>Typecheck · lint · test · build · audit · SonarCloud · validação de permissão</td></tr>
+      <tr><td><code>deploy-develop.yml</code></td><td>Push em develop ou manual</td><td>Build + deploy em develop</td></tr>
+      <tr><td><code>deploy-staging.yml</code></td><td>GitHub Release publicada</td><td>Build + deploy em staging com tag da versão</td></tr>
+      <tr><td><code>deploy-production.yml</code></td><td>Manual (seniors only)</td><td>Promote: copia imagem de staging para produção</td></tr>
+      <tr><td><code>deploy-hotfix.yml</code></td><td>PR hotfix/* mergeado em main</td><td>Build + push no AR de staging com tag hotfix-* (sem deploy)</td></tr>
+      <tr><td><code>deploy-manual.yml</code></td><td>Manual</td><td>Build + deploy em develop ou staging</td></tr>
+      <tr><td><code>manage-traffic.yml</code></td><td>Manual</td><td>Canary (X%), release-100%, rollback para revisão</td></tr>
+      <tr><td><code>sync-main-to-develop.yml</code></td><td>Push em main</td><td>Backmerge automático main → develop</td></tr>
+      <tr><td><code>cleanup-pr-caches.yml</code></td><td>PR fechado</td><td>Remove caches de build do GHA</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- SLIDE 14: Referência Variáveis -->
+<div class="slide">
+  <div class="slide-tag">Referência</div>
+  <h1>Variáveis e secrets necessários</h1>
+  <div class="cols">
+    <div>
+      <h2>GitHub Environment Variables</h2>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Settings → Environments → Variables</p>
+      <table>
+        <thead><tr><th>Variable</th><th>Descrição</th></tr></thead>
+        <tbody>
+          <tr><td><code>GCP_PROJECT_ID</code></td><td>ID do projeto GCP</td></tr>
+          <tr><td><code>GCP_REGION</code></td><td>Região (ex: us-central1)</td></tr>
+          <tr><td><code>GCP_SERVICE_ACCOUNT_EMAIL</code></td><td>SA do deployer</td></tr>
+          <tr><td><code>GCP_WORKLOAD_IDENTITY_PROVIDER</code></td><td>Resource name do WIF provider</td></tr>
+          <tr><td><code>AR_REPOSITORY</code></td><td>Nome do repo no Artifact Registry</td></tr>
+          <tr><td><code>GCP_STAGING_PROJECT_ID</code></td><td><em>Só production</em> — projeto de staging para o promote</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h2>GitHub Repository Secrets</h2>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Settings → Secrets and variables → Actions</p>
+      <table>
+        <thead><tr><th>Secret</th><th>Descrição</th></tr></thead>
+        <tbody>
+          <tr><td><code>GH_PACKAGES_TOKEN</code></td><td>Token com read:packages para @bankme-tech/*</td></tr>
+          <tr><td><code>SONAR_TOKEN</code></td><td>Token do SonarCloud</td></tr>
+        </tbody>
+      </table>
+      <h2 style="margin-top:16px;">GCP Secret Manager</h2>
+      <p style="font-size:13px;color:var(--muted);">Todos os secrets de aplicação (Auth0, banco de dados, API keys) ficam no GCP Secret Manager, referenciados no <code>environments.yml</code> via <code>runtime-secrets</code>. Nunca saem do GCP.</p>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 15: FAQ -->
+<div class="slide">
+  <div class="slide-tag">Dúvidas frequentes</div>
+  <h1>Erros comuns e soluções</h1>
+  <div class="steps">
+    <div class="step"><div class="step-n" style="background:var(--red);">!</div><div class="step-body"><strong>"Permission denied on secret"</strong><p>O SA não tem secretmanager.secretAccessor.</p><pre><span class="cmd">gcloud projects add-iam-policy-binding</span> SEU_PROJETO <span class="flag">\
+  --member</span>=<span class="str">"serviceAccount:github-deployer@SEU_PROJETO.iam.gserviceaccount.com"</span> <span class="flag">\
+  --role</span>=<span class="str">"roles/secretmanager.secretAccessor"</span></pre></div></div>
+    <div class="step"><div class="step-n" style="background:var(--red);">!</div><div class="step-body"><strong>"rejected by the attribute condition" — WIF</strong><p>O ref ou repositório não bate com a condition do provider. Verifique:</p><pre><span class="cmd">gcloud iam workload-identity-pools providers describe</span> github-provider <span class="flag">\
+  --workload-identity-pool</span>=github-pool <span class="flag">--project</span>=SEU_PROJETO <span class="flag">--location</span>=global <span class="flag">\
+  --format</span>=<span class="str">"value(attributeCondition)"</span></pre></div></div>
+    <div class="step"><div class="step-n" style="background:var(--red);">!</div><div class="step-body"><strong>"ALREADY_EXISTS: Revision ... already exists"</strong><p>Uma revisão falhou anteriormente com o mesmo nome. Delete o serviço Cloud Run e reimplante.</p></div></div>
+    <div class="step"><div class="step-n" style="background:var(--red);">!</div><div class="step-body"><strong>"Permission denied" ao fazer docker pull no promote</strong><p>O SA de produção não tem leitura no AR de staging. Re-execute:<br><code>./setup-gcp.sh --env production --staging-project SEU_STAGING</code></p></div></div>
+    <div class="step"><div class="step-n" style="background:var(--yellow);color:#000;">?</div><div class="step-body"><strong>validate-permission falha mas o CI passa</strong><p>Comportamento esperado — o dev não está no time seniors. O merge só é bloqueado após branch protection (Passo 9).</p></div></div>
+  </div>
+</div>
+
+<!-- SLIDE 16: Migração O que muda -->
+<div class="slide">
+  <div class="slide-tag">Migração de projetos existentes</div>
+  <h1>O que muda na migração para v2</h1>
+  <p class="lead">Para projetos que já usam o <code>bankme-tech/infra-pipelines</code> antigo com <code>GCP_SA_KEY</code>.</p>
+  <table style="margin-bottom:16px;">
+    <thead><tr><th></th><th>Antes (infra-pipelines antigo)</th><th>Depois (v2)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Auth GCP</strong></td><td>GCP_SA_KEY — JSON no GitHub Secret</td><td>WIF — sem nenhuma chave armazenada</td></tr>
+      <tr><td><strong>Config parser</strong></td><td>load-env-config action (depende do repo)</td><td>Python inline — zero dependência externa</td></tr>
+      <tr><td><strong>Infra no YAML</strong></td><td>gcp-project-id, gcp-region, gcp-registry no environments.yml</td><td>Somente nos GitHub Environment Variables</td></tr>
+      <tr><td><strong>App secrets</strong></td><td>GCP Secret Manager via runtime-secrets</td><td>Igual — mesma estrutura, mesmos secrets</td></tr>
+      <tr><td><strong>Deploy produção</strong></td><td>Rebuild completo da imagem</td><td>Promote — copia digest de staging (imagem idêntica)</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    <strong>Projetos com SSL certificates</strong> (api-oracle, api-bifrost, api-data-warehouse) — o v2 suporta nativamente via <code>volume-secrets</code> no environments.yml. Os secrets no GCP Secret Manager não mudam.
+  </div>
+</div>
+
+<!-- SLIDE 17: Migração passo a passo -->
+<div class="slide">
+  <div class="slide-tag">Migração — passo a passo</div>
+  <h1>Como migrar um projeto existente</h1>
+  <div class="steps">
+    <div class="step"><div class="step-n">1</div><div class="step-body"><strong>Configurar WIF no GCP (Passo 1 deste guia)</strong><pre><span class="cmd">./scripts/setup-gcp.sh</span> <span class="flag">--project</span> SEU_PROJETO <span class="flag">--env</span> develop ...</pre><p>Mantenha o GCP_SA_KEY como backup até validar que o WIF funciona.</p></div></div>
+    <div class="step"><div class="step-n">2</div><div class="step-body"><strong>Adicionar variáveis GCP nos GitHub Environments (Passo 2)</strong><p>O secret GCP_SA_KEY pode coexistir — os novos workflows não o usam.</p></div></div>
+    <div class="step"><div class="step-n">3</div><div class="step-body"><strong>Substituir os workflows pelos templates</strong><pre><span class="cmd">cp</span> /caminho/infra-pipelines-v2/templates/.github/workflows/*.yml .github/workflows/
+<span class="cmd">cp</span> /caminho/infra-pipelines-v2/templates/.github/CODEOWNERS .github/
+<span class="cmd">cp</span> /caminho/infra-pipelines-v2/templates/sonar-project.properties .</pre></div></div>
+    <div class="step"><div class="step-n">4</div><div class="step-body"><strong>Atualizar o environments.yml para o novo schema</strong><p>Remover: <code>gcp-project-id</code>, <code>gcp-region</code>, <code>gcp-registry</code><br>Manter: <code>runtime-secrets</code> e <code>volume-secrets</code> — compatíveis sem mudança.</p></div></div>
+    <div class="step"><div class="step-n">5</div><div class="step-body"><strong>Commit, testar (Passos 7 e 8) e remover o GCP_SA_KEY</strong><p>Após validar que o pipeline funciona via WIF, delete o GCP_SA_KEY do GitHub Secrets.</p></div></div>
+  </div>
+</div>
+
+</div><!-- /deck -->
+
 <nav>
   <button id="prev" onclick="go(-1)" disabled>←</button>
   <div class="dots" id="dots"></div>
-  <span id="counter">1 / 6</span>
+  <span id="ctr"></span>
   <button id="next" onclick="go(1)">→</button>
 </nav>
 
 <script>
-  const slides = document.querySelectorAll('.slide');
-  const total = slides.length;
-  let cur = 0;
+const slides = document.querySelectorAll('.slide');
+const total = slides.length;
+let cur = 0;
 
-  // Build dots
-  const dotsEl = document.getElementById('dots');
-  slides.forEach((_, i) => {
-    const d = document.createElement('div');
-    d.className = 'dot' + (i === 0 ? ' on' : '');
-    d.onclick = () => go(i - cur);
-    dotsEl.appendChild(d);
-  });
+function label() { return `${cur+1} / ${total}`; }
+document.getElementById('snum').textContent = label();
+document.getElementById('ctr').textContent  = label();
 
-  function go(delta) {
-    const next = cur + delta;
-    if (next < 0 || next >= total) return;
+const dotsEl = document.getElementById('dots');
+slides.forEach((_, i) => {
+  const d = document.createElement('div');
+  d.className = 'dot' + (i===0?' on':'');
+  d.onclick = () => go(i-cur);
+  dotsEl.appendChild(d);
+});
 
-    slides[cur].classList.remove('active');
-    slides[cur].classList.add('out');
-    setTimeout(() => slides[cur - delta < 0 ? cur - delta + total : cur - delta]?.classList.remove('out'), 400);
+function go(delta) {
+  const next = cur + delta;
+  if (next < 0 || next >= total) return;
+  slides[cur].classList.remove('active');
+  slides[cur].classList.add('out');
+  const prev = cur; cur = next;
+  setTimeout(() => slides[prev].classList.remove('out'), 350);
+  slides[cur].classList.add('active');
+  document.querySelectorAll('.dot').forEach((d,i) => d.classList.toggle('on', i===cur));
+  document.getElementById('snum').textContent = label();
+  document.getElementById('ctr').textContent  = label();
+  document.getElementById('prev').disabled = cur===0;
+  document.getElementById('next').disabled = cur===total-1;
+}
 
-    cur = next;
-    slides[cur].classList.add('active');
-    slides[cur].classList.remove('out');
-
-    document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('on', i === cur));
-    document.getElementById('counter').textContent = `${cur + 1} / ${total}`;
-    document.getElementById('prev').disabled = cur === 0;
-    document.getElementById('next').disabled = cur === total - 1;
-  }
-
-  // Keyboard + swipe
-  document.addEventListener('keydown', e => {
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') go(1);
-    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp') go(-1);
-  });
-
-  let tx = 0;
-  document.addEventListener('touchstart', e => tx = e.touches[0].clientX);
-  document.addEventListener('touchend',   e => {
-    const dx = tx - e.changedTouches[0].clientX;
-    if (Math.abs(dx) > 50) go(dx > 0 ? 1 : -1);
-  });
+document.addEventListener('keydown', e => {
+  if (['ArrowRight','ArrowDown',' '].includes(e.key)) { e.preventDefault(); go(1); }
+  if (['ArrowLeft','ArrowUp'].includes(e.key)) { e.preventDefault(); go(-1); }
+});
+let tx=0;
+document.addEventListener('touchstart', e => tx=e.touches[0].clientX);
+document.addEventListener('touchend',   e => { const dx=tx-e.changedTouches[0].clientX; if(Math.abs(dx)>50) go(dx>0?1:-1); });
 </script>
 </body>
 </html>
