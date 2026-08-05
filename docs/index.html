@@ -543,10 +543,37 @@ reason: <span class="str">"Teste inicial do pipeline"</span></pre>
   </div>
 </div>
 
-<!-- SLIDE 17: Migração passo a passo -->
+<!-- SLIDE 17: Migração estratégias -->
 <div class="slide">
-  <div class="slide-tag">Migração — passo a passo</div>
-  <h1>Como migrar um projeto existente</h1>
+  <div class="slide-tag">Migração — estratégias</div>
+  <h1>Como abordar a migração</h1>
+  <p class="lead">Há três formas de migrar. Escolha conforme o apetite de risco do time.</p>
+  <div class="cols3" style="margin-bottom:16px;">
+    <div class="card">
+      <h3 style="color:var(--green);">A — In-place</h3>
+      <p>Migra o repo existente diretamente. Substitui os workflows, atualiza o environments.yml e configura o WIF. O pipeline antigo para de funcionar assim que o commit é feito.</p>
+      <p style="margin-top:8px;font-size:12px;color:var(--muted);">Mais simples. Risco maior se algo der errado durante a migração.</p>
+    </div>
+    <div class="card">
+      <h3 style="color:var(--orange);">B — Repo temporário -old</h3>
+      <p>Renomear o repo atual para <code>bankme-frontend-old</code>. Criar o novo <code>bankme-frontend</code> limpo com os templates. Validar com calma. Arquivar o <code>-old</code> depois.</p>
+      <p style="margin-top:8px;font-size:12px;color:var(--muted);">Mais seguro. O repo antigo continua existindo como fallback enquanto o novo é validado.</p>
+    </div>
+    <div class="card">
+      <h3 style="color:var(--blue);">C — Branch paralela</h3>
+      <p>Criar branch <code>pipeline-v2</code> no repo existente. Configurar as variáveis GCP nos environments do GitHub. Testar o novo pipeline nessa branch sem afetar main/develop.</p>
+      <p style="margin-top:8px;font-size:12px;color:var(--muted);">Menor impacto operacional. Boa opção se o time quiser validar antes de comprometer.</p>
+    </div>
+  </div>
+  <div class="warn-box">
+    <strong>Nota sobre a opção B (renomear para -old):</strong> o serviço no Cloud Run continuará rodando normalmente — ele não está vinculado ao nome do repositório GitHub. O novo repo vai criar um <em>novo</em> serviço Cloud Run. Quando estiver estável, redirecione o DNS/tráfego para o novo serviço e arquive o <code>-old</code>.
+  </div>
+</div>
+
+<!-- SLIDE 18: Migração passo a passo -->
+<div class="slide">
+  <div class="slide-tag">Migração — passo a passo (opção A)</div>
+  <h1>Migração in-place de um projeto existente</h1>
   <div class="steps">
     <div class="step"><div class="step-n">1</div><div class="step-body"><strong>Configurar WIF no GCP (Passo 1 deste guia)</strong><pre><span class="cmd">./scripts/setup-gcp.sh</span> <span class="flag">--project</span> SEU_PROJETO <span class="flag">--env</span> develop ...</pre><p>Mantenha o GCP_SA_KEY como backup até validar que o WIF funciona.</p></div></div>
     <div class="step"><div class="step-n">2</div><div class="step-body"><strong>Adicionar variáveis GCP nos GitHub Environments (Passo 2)</strong><p>O secret GCP_SA_KEY pode coexistir — os novos workflows não o usam.</p></div></div>
