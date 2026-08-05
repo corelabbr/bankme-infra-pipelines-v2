@@ -56,19 +56,27 @@ Antes de começar, confirme que você tem:
 
 ## Sobre versionamento
 
-Os workflows dos projetos referenciam este repositório com a tag `@v1`:
+Cada projeto referencia o infra-pipelines com `@v1`:
 ```yaml
 uses: bankme-tech/infra-pipelines-v2/.github/workflows/build-and-deploy.yml@v1
 ```
 
-Isso significa que **atualizações no infra-pipelines só chegam aos projetos quando uma nova tag `v1`, `v2`, etc. for criada**. Para lançar uma nova versão:
+Pense na tag `v1` como um ponteiro fixo. Quando você faz uma mudança no infra-pipelines e quer que todos os projetos recebam essa mudança, você move esse ponteiro para o commit mais novo:
+
 ```bash
-git tag v1.0.1 && git push origin v1.0.1
-# Para atualizar a tag flutuante v1:
+# Após fazer commit e push no infra-pipelines:
 git tag -f v1 && git push origin v1 --force
 ```
 
-> **Atenção:** `@main` pode ser usado em desenvolvimento/testes mas **não em produção** — qualquer commit no main afetaria todos os projetos imediatamente.
+Só isso. Todos os projetos passam a usar a versão nova automaticamente na próxima run.
+
+Quando a mudança for grande demais e você quiser dar uma janela de migração para os projetos (cada um migra no seu tempo), crie uma tag nova:
+```bash
+git tag v2 && git push origin v2
+# Cada projeto migra manualmenteadjustando @v1 → @v2 nos seus workflows
+```
+
+> **Por que não usar `@main`?** Porque qualquer commit — até um experimental — chegaria a todos os projetos instantaneamente. Com `@v1` você controla exatamente quando uma mudança entra em vigor.
 
 ---
 
