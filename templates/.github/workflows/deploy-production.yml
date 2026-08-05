@@ -23,7 +23,7 @@ run-name: 'Promote ${{ inputs.version }} to Production (${{ github.actor }})'
 
 jobs:
   promote:
-    uses: bankme-tech/infra-pipelines-v2/.github/workflows/deploy-production.yml@main
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/deploy-production.yml@v1
     permissions:
       contents: read
       id-token: write

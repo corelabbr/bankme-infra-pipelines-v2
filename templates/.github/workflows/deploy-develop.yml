@@ -20,7 +20,7 @@ concurrency:
 jobs:
   deploy:
     name: Build & Deploy to Develop
-    uses: bankme-tech/infra-pipelines-v2/.github/workflows/build-and-deploy.yml@main
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/build-and-deploy.yml@v1
     permissions:
       contents: read
       id-token: write

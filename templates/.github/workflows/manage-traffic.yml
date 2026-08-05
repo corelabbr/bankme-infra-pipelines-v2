@@ -31,7 +31,7 @@ on:
 
 jobs:
   traffic:
-    uses: bankme-tech/infra-pipelines-v2/.github/workflows/manage-traffic.yml@main
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/manage-traffic.yml@v1
     permissions:
       contents: read
       id-token: write

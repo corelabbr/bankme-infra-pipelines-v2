@@ -11,7 +11,7 @@ on:
 jobs:
   deploy:
     name: Build & Deploy to Staging (${{ github.event.release.tag_name }})
-    uses: bankme-tech/infra-pipelines-v2/.github/workflows/build-and-deploy.yml@main
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/build-and-deploy.yml@v1
     permissions:
       contents: read
       id-token: write

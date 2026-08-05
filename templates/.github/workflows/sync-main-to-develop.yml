@@ -10,7 +10,7 @@ on:
 
 jobs:
   sync:
-    uses: bankme-tech/infra-pipelines-v2/.github/workflows/git-backmerge.yml@main
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/git-backmerge.yml@v1
     permissions:
       contents: write
       pull-requests: write

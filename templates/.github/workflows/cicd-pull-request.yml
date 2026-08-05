@@ -12,14 +12,14 @@ jobs:
   # Verifica se o autor tem permissão de merge na branch alvo.
   # Bloqueia merge automaticamente após setup-branch-protection.sh ser executado.
   validate-permission:
-    uses: bankme-tech/infra-pipelines-v2/.github/workflows/validate-merge-permission.yml@main
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/validate-merge-permission.yml@v1
     with:
       org: bankme-tech
       team: seniors       # ajuste para o time correto se necessário
     secrets: inherit
 
   ci:
-    uses: bankme-tech/infra-pipelines-v2/.github/workflows/cicd-pull-request.yml@main
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/cicd-pull-request.yml@v1
     permissions:
       contents: read
       pull-requests: write
