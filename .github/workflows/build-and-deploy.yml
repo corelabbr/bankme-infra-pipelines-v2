@@ -349,7 +349,7 @@ jobs:
             "--timeout=${{ needs.load-config.outputs.timeout }}s"
             "--min-instances=${{ needs.load-config.outputs.min-instances }}"
             "--max-instances=${{ needs.load-config.outputs.max-instances }}"
-            "--revision-suffix=${ENV}-${COMMIT_SHORT}"
+            "--revision-suffix=${ENV}-${COMMIT_SHORT}-${{ github.run_number }}"
             "$ALLOW_UNAUTH"
           )
 
