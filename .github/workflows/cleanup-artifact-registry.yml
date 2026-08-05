@@ -1,0 +1,206 @@
+name: Cleanup Artifact Registry
+
+# Removes old Docker images from Artifact Registry.
+# Runs automatically every Sunday at 04:00 UTC.
+# Can also be triggered manually or called by other workflows.
+#
+# Required GitHub Environment Variables (per environment):
+#   GCP_PROJECT_ID, GCP_REGION, GCP_WORKLOAD_IDENTITY_PROVIDER,
+#   GCP_SERVICE_ACCOUNT_EMAIL, AR_REPOSITORY
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+        description: 'Environment (develop, staging, production, qa, hmg, …)'
+      keep-days:
+        required: false
+        type: number
+        default: 7
+        description: 'Delete tagged images older than N days'
+      keep-latest:
+        required: false
+        type: number
+        default: 5
+        description: 'Always keep at least N images regardless of age'
+      dry-run:
+        required: false
+        type: boolean
+        default: false
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        required: true
+        type: choice
+        options: [develop, staging, qa, hmg, production]
+      keep-days:
+        required: false
+        type: number
+        default: 7
+      keep-latest:
+        required: false
+        type: number
+        default: 5
+      dry-run:
+        required: false
+        type: boolean
+        default: true
+        description: 'Preview deletions without actually deleting'
+
+  schedule:
+    - cron: '0 4 * * 0'  # Every Sunday at 04:00 UTC
+
+jobs:
+  load-config:
+    name: Load Config
+    runs-on: ubuntu-latest
+    outputs:
+      service-name: ${{ steps.config.outputs.service-name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse environments.yml
+        id: config
+        env:
+          ENVIRONMENT: ${{ inputs.environment || 'develop' }}
+        run: |
+          python3 << 'PYEOF'
+          import yaml, os, sys
+
+          env_key = os.environ['ENVIRONMENT']
+
+          with open('.github/config/environments.yml') as f:
+              config = yaml.safe_load(f)
+
+          if env_key not in config.get('environments', {}):
+              available = list(config.get('environments', {}).keys())
+              print(f"ERROR: '{env_key}' not found. Available: {available}")
+              sys.exit(1)
+
+          out = os.environ['GITHUB_OUTPUT']
+          with open(out, 'a') as f:
+              f.write(f"service-name={config.get('service-name', 'service')}\n")
+          PYEOF
+
+  cleanup:
+    name: Cleanup Images
+    needs: load-config
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'develop' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Delete untagged images
+        run: |
+          PROJECT="${{ vars.GCP_PROJECT_ID }}"
+          REGION="${{ vars.GCP_REGION }}"
+          AR_REPO="${{ vars.AR_REPOSITORY }}"
+          SERVICE="${{ needs.load-config.outputs.service-name }}"
+          DRY_RUN="${{ inputs.dry-run || 'false' }}"
+          IMAGE_PATH="${REGION}-docker.pkg.dev/${PROJECT}/${AR_REPO}/${SERVICE}"
+
+          echo "Cleaning untagged images: ${IMAGE_PATH}"
+
+          UNTAGGED=$(gcloud artifacts docker images list "$IMAGE_PATH" \
+            --include-tags \
+            --filter="NOT tags:*" \
+            --format="get(version)" \
+            --project="$PROJECT" 2>/dev/null || echo "")
+
+          COUNT=$(echo "$UNTAGGED" | grep -c "sha256" || echo "0")
+          echo "Found $COUNT untagged images"
+
+          echo "$UNTAGGED" | while IFS= read -r digest; do
+            [ -z "$digest" ] && continue
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "  [dry-run] would delete: $IMAGE_PATH@$digest"
+            else
+              gcloud artifacts docker images delete "$IMAGE_PATH@$digest" \
+                --project="$PROJECT" --quiet --delete-tags 2>/dev/null || true
+              echo "  deleted: $digest"
+            fi
+          done
+
+      - name: Delete old tagged images
+        run: |
+          PROJECT="${{ vars.GCP_PROJECT_ID }}"
+          REGION="${{ vars.GCP_REGION }}"
+          AR_REPO="${{ vars.AR_REPOSITORY }}"
+          SERVICE="${{ needs.load-config.outputs.service-name }}"
+          KEEP_DAYS="${{ inputs.keep-days || '7' }}"
+          KEEP_LATEST="${{ inputs.keep-latest || '5' }}"
+          DRY_RUN="${{ inputs.dry-run || 'false' }}"
+          IMAGE_PATH="${REGION}-docker.pkg.dev/${PROJECT}/${AR_REPO}/${SERVICE}"
+
+          CUTOFF=$(date -d "-${KEEP_DAYS} days" +%Y-%m-%dT%H:%M:%S 2>/dev/null \
+                || date -v-${KEEP_DAYS}d +%Y-%m-%dT%H:%M:%S)
+
+          # Tags that must never be deleted
+          PROTECTED="^(develop|staging|qa|hmg|production|latest|rc-latest|hmg-latest|staging-latest)$"
+
+          ALL=$(gcloud artifacts docker images list "$IMAGE_PATH" \
+            --include-tags \
+            --sort-by="~UPDATE_TIME" \
+            --format="json(version,tags,updateTime)" \
+            --project="$PROJECT" 2>/dev/null || echo "[]")
+
+          KEPT=0
+          DELETED=0
+
+          echo "$ALL" | jq -c '.[]' 2>/dev/null | while IFS= read -r img; do
+            DIGEST=$(echo "$img" | jq -r '.version')
+            TAGS=$(echo "$img" | jq -r '.tags // [] | join(",")')
+            UPDATED=$(echo "$img" | jq -r '.updateTime')
+
+            # Skip images with protected tags
+            HAS_PROTECTED=false
+            IFS=',' read -ra TAG_ARR <<< "$TAGS"
+            for tag in "${TAG_ARR[@]}"; do
+              echo "$tag" | grep -qE "$PROTECTED" && { HAS_PROTECTED=true; break; }
+            done
+            [ "$HAS_PROTECTED" = "true" ] && continue
+
+            # Keep the N most recent regardless of age
+            if [ "$KEPT" -lt "$KEEP_LATEST" ]; then
+              KEPT=$((KEPT + 1))
+              echo "  keeping (recent): $DIGEST (tags: $TAGS)"
+              continue
+            fi
+
+            # Delete if older than cutoff
+            if [[ "$UPDATED" < "$CUTOFF" ]]; then
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "  [dry-run] would delete: $DIGEST (tags: $TAGS, updated: $UPDATED)"
+              else
+                gcloud artifacts docker images delete "$IMAGE_PATH@$DIGEST" \
+                  --project="$PROJECT" --quiet --delete-tags 2>/dev/null || true
+                echo "  deleted: $DIGEST (tags: $TAGS)"
+                DELETED=$((DELETED + 1))
+              fi
+            fi
+          done
+
+      - name: Summary
+        run: |
+          echo "## Artifact Registry Cleanup" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | ${{ inputs.environment || 'develop' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Keep days** | ${{ inputs.keep-days || '7' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Keep latest** | ${{ inputs.keep-latest || '5' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Dry run** | ${{ inputs.dry-run || 'false' }} |" >> $GITHUB_STEP_SUMMARY

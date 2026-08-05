@@ -1,0 +1,124 @@
+name: Git Backmerge
+
+# Generic backmerge workflow — merges a source branch into one or more targets.
+# On conflict: aborts the merge and opens a PR for manual resolution.
+#
+# Replaces the per-project sync-main-to-develop.yml with a reusable, multi-target version.
+
+on:
+  workflow_call:
+    inputs:
+      source-branch:
+        required: true
+        type: string
+        description: 'Branch to merge FROM'
+      target-branches:
+        required: true
+        type: string
+        description: 'Branch(es) to merge INTO — comma-separated (e.g. "develop,staging")'
+      merge-strategy:
+        required: false
+        type: string
+        default: 'default'
+        description: 'Merge strategy: default, theirs, ours'
+      commit-message-suffix:
+        required: false
+        type: string
+        default: '[skip ci]'
+        description: 'Appended to the auto-merge commit message'
+
+jobs:
+  backmerge:
+    name: Backmerge ${{ inputs.source-branch }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Backmerge into each target
+        run: |
+          SOURCE="${{ inputs.source-branch }}"
+          STRATEGY="${{ inputs.merge-strategy }}"
+          SUFFIX="${{ inputs.commit-message-suffix }}"
+
+          git fetch origin --prune
+
+          echo "## Backmerge: $SOURCE" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          IFS=',' read -ra TARGETS <<< "${{ inputs.target-branches }}"
+
+          SUCCESS=0
+          FAILED=0
+
+          for TARGET in "${TARGETS[@]}"; do
+            TARGET=$(echo "$TARGET" | xargs)  # trim whitespace
+
+            if ! git show-ref --verify --quiet "refs/remotes/origin/$TARGET"; then
+              echo "- ⚠️ **$TARGET**: branch não existe (ignorado)" >> $GITHUB_STEP_SUMMARY
+              continue
+            fi
+
+            git checkout "$TARGET"
+            git reset --hard "origin/$TARGET"
+
+            MERGE_OK=false
+            MSG="chore: merge $SOURCE into $TARGET $SUFFIX"
+
+            case "$STRATEGY" in
+              theirs)
+                git merge "origin/$SOURCE" --no-edit -X theirs -m "$MSG" && MERGE_OK=true ;;
+              ours)
+                git merge "origin/$SOURCE" --no-edit -X ours -m "$MSG" && MERGE_OK=true ;;
+              *)
+                git merge "origin/$SOURCE" --no-edit -m "$MSG" && MERGE_OK=true ;;
+            esac
+
+            if [ "$MERGE_OK" = "true" ]; then
+              git push origin "$TARGET"
+              echo "- ✅ **$TARGET**: merge realizado" >> $GITHUB_STEP_SUMMARY
+              SUCCESS=$((SUCCESS + 1))
+            else
+              git merge --abort 2>/dev/null || true
+
+              # Create a branch and open a PR for manual conflict resolution
+              CONFLICT_BRANCH="backmerge/${SOURCE}-to-${TARGET}-$(date +%Y%m%d%H%M%S)"
+              git checkout -b "$CONFLICT_BRANCH" "origin/$SOURCE"
+              git push origin "$CONFLICT_BRANCH"
+
+              PR_URL=$(gh pr create \
+                --base "$TARGET" \
+                --head "$CONFLICT_BRANCH" \
+                --title "chore: backmerge $SOURCE → $TARGET (conflito)" \
+                --body "O merge automático de \`$SOURCE\` para \`$TARGET\` encontrou conflitos.
+
+          Resolva os conflitos neste PR antes de fazer o merge.
+
+          **Motivo do backmerge:** ${{ inputs.commit-message-suffix }}" \
+                2>&1 || echo "")
+
+              if [[ "$PR_URL" == http* ]]; then
+                echo "- 📝 **$TARGET**: [PR criado para resolver conflitos]($PR_URL)" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "- ❌ **$TARGET**: conflito detectado, falha ao criar PR" >> $GITHUB_STEP_SUMMARY
+              fi
+
+              FAILED=$((FAILED + 1))
+              git checkout "$SOURCE" 2>/dev/null || true
+            fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Resultado:** $SUCCESS sucesso(s), $FAILED conflito(s)" >> $GITHUB_STEP_SUMMARY
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

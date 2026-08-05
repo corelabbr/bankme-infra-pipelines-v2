@@ -1,0 +1,83 @@
+name: Validate Merge Permission
+
+# Checks if the PR author is allowed to merge into the target branch.
+# Rules:
+#   - Members of the 'infra' GitHub team can merge to any branch
+#   - hotfix/* branches can be merged to main by any collaborator
+#   - All other merges to main require infra team membership
+
+on:
+  workflow_call:
+    inputs:
+      org:
+        required: false
+        type: string
+        default: 'bankme-tech'
+        description: 'GitHub organization'
+      team:
+        required: false
+        type: string
+        default: 'infra'
+        description: 'GitHub team with unrestricted merge access'
+    secrets:
+      GH_PACKAGES_TOKEN:
+        required: true
+        description: 'Token with org:read scope to check team membership'
+
+jobs:
+  check:
+    name: Merge Permission Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          TARGET: ${{ github.event.pull_request.base.ref }}
+          SOURCE: ${{ github.event.pull_request.head.ref }}
+          ORG: ${{ inputs.org || 'bankme-tech' }}
+          TEAM: ${{ inputs.team || 'infra' }}
+        run: |
+          echo "Checking: $SOURCE → $TARGET (by $AUTHOR)"
+
+          IS_INFRA=$(gh api "orgs/$ORG/teams/$TEAM/memberships/$AUTHOR" \
+            --jq '.state' 2>/dev/null || echo "")
+
+          if [ "$IS_INFRA" = "active" ]; then
+            echo "✅ $AUTHOR is in @$ORG/$TEAM — allowed"
+            exit 0
+          fi
+
+          if [ "$TARGET" = "main" ] && [[ "$SOURCE" == hotfix/* ]]; then
+            echo "✅ hotfix/* → main — allowed for any collaborator"
+            exit 0
+          fi
+
+          echo "❌ $AUTHOR is not authorized to merge $SOURCE → $TARGET"
+          if [ "$TARGET" = "main" ]; then
+            echo "  Allowed on main: @$ORG/$TEAM members, or hotfix/* branches"
+          else
+            echo "  Allowed on $TARGET: @$ORG/$TEAM members only"
+          fi
+          exit 1
+
+      - name: Report commit status
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+        run: |
+          SHA="${{ github.event.pull_request.head.sha }}"
+          REPO="${{ github.repository }}"
+          RUN_URL="${{ github.server_url }}/$REPO/actions/runs/${{ github.run_id }}"
+
+          STATE="failure"
+          DESC="Merge permission denied — see workflow logs"
+          [ "${{ steps.check.outcome }}" = "success" ] && STATE="success" && DESC="Merge permission granted"
+
+          gh api "repos/$REPO/statuses/$SHA" \
+            -X POST \
+            -f state="$STATE" \
+            -f context="Merge Permission Check" \
+            -f description="$DESC" \
+            -f target_url="$RUN_URL"
