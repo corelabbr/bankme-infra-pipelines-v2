@@ -39,19 +39,25 @@ SA_NAME="github-deployer"
 POOL_NAME="github-pool"
 PROVIDER_NAME="github-provider"
 
+STAGING_PROJECT=""   # só necessário para --env production
+
 usage() {
-  echo "Uso: $0 --project <id> --env <develop|staging|production> --gh-org <org> --gh-repo <repo> [--region <region>] [--ar-repo <repo>]"
+  echo "Uso: $0 --project <id> --env <develop|staging|production> --gh-org <org> --gh-repo <repo> [--region <region>] [--ar-repo <repo>] [--staging-project <id>]"
+  echo ""
+  echo "  --staging-project  ID do projeto GCP de staging (obrigatório quando --env production)"
+  echo "                     Permite que o SA de produção leia imagens do AR de staging (promote)."
   exit 1
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --project)  PROJECT="$2";  shift 2 ;;
-    --env)      ENV="$2";      shift 2 ;;
-    --region)   REGION="$2";   shift 2 ;;
-    --gh-org)   GH_ORG="$2";   shift 2 ;;
-    --gh-repo)  GH_REPO="$2";  shift 2 ;;
-    --ar-repo)  AR_REPO="$2";  shift 2 ;;
+    --project)         PROJECT="$2";         shift 2 ;;
+    --env)             ENV="$2";             shift 2 ;;
+    --region)          REGION="$2";          shift 2 ;;
+    --gh-org)          GH_ORG="$2";          shift 2 ;;
+    --gh-repo)         GH_REPO="$2";         shift 2 ;;
+    --ar-repo)         AR_REPO="$2";         shift 2 ;;
+    --staging-project) STAGING_PROJECT="$2"; shift 2 ;;
     *) usage ;;
   esac
 done
@@ -124,9 +130,10 @@ else
 fi
 
 # Definir attribute condition baseado no ambiente
+# staging aceita tags (deploy normal) e main (build de hotfix)
 case "$ENV" in
   develop)    CONDITION="assertion.repository=='${GH_ORG}/${GH_REPO}'" ;;
-  staging)    CONDITION="assertion.repository=='${GH_ORG}/${GH_REPO}' && assertion.ref.startsWith('refs/tags/')" ;;
+  staging)    CONDITION="assertion.repository=='${GH_ORG}/${GH_REPO}' && (assertion.ref.startsWith('refs/tags/') || assertion.ref=='refs/heads/main')" ;;
   production) CONDITION="assertion.repository=='${GH_ORG}/${GH_REPO}' && assertion.ref=='refs/heads/main'" ;;
   *)          CONDITION="assertion.repository=='${GH_ORG}/${GH_REPO}'" ;;
 esac
@@ -158,6 +165,26 @@ gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/attribute.repository/${GH_ORG}/${GH_REPO}" \
   --project="$PROJECT" --quiet 2>/dev/null
 echo "  ✓ SA vinculado ao WIF"
+
+# ── 4b. Permissão de leitura no AR de staging (só para produção) ─────────────
+# O SA de produção precisa ler imagens do AR de staging para o promote funcionar.
+if [ "$ENV" = "production" ]; then
+  if [ -n "$STAGING_PROJECT" ]; then
+    echo "→ Concedendo leitura no AR de staging ($STAGING_PROJECT)..."
+    gcloud projects add-iam-policy-binding "$STAGING_PROJECT" \
+      --member="serviceAccount:$SA_EMAIL" \
+      --role="roles/artifactregistry.reader" \
+      --quiet 2>/dev/null | grep -q "Updated" && \
+      echo "  ✓ roles/artifactregistry.reader em $STAGING_PROJECT" || \
+      echo "  ~ roles/artifactregistry.reader em $STAGING_PROJECT (já existia)"
+  else
+    echo "  ⚠ --staging-project não informado. O SA de produção não terá acesso ao AR de staging."
+    echo "    Adicione manualmente depois:"
+    echo "    gcloud projects add-iam-policy-binding <staging-project> \\"
+    echo "      --member='serviceAccount:$SA_EMAIL' \\"
+    echo "      --role='roles/artifactregistry.reader'"
+  fi
+fi
 
 # ── 5. Artifact Registry ──────────────────────────────────────────────────────
 echo "→ Criando Artifact Registry..."

@@ -1,0 +1,31 @@
+name: Build Hotfix
+
+# Triggered when a hotfix/* PR is merged into main.
+# Builds the Docker image and pushes to Artifact Registry (staging project)
+# with a hotfix-specific tag — does NOT deploy anywhere automatically.
+#
+# After the build completes, a senior can promote the image to production using:
+#   Actions → Deploy to Production → version: hotfix-<branch-name>
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build Hotfix Image
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'hotfix/')
+    uses: bankme-tech/infra-pipelines-v2/.github/workflows/build-and-push.yml@v1
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      # Usa credenciais de staging para que a imagem fique no AR de staging
+      # e possa ser promovida via deploy-production.yml
+      environment: staging
+      ref: ${{ github.event.pull_request.merge_commit_sha }}
+      image-tag-prefix: ${{ github.event.pull_request.head.ref }}
+      extra-tags: hotfix-latest
+    secrets: inherit

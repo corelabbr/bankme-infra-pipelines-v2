@@ -1,0 +1,16 @@
+# CODEOWNERS
+#
+# Define quem precisa aprovar PRs que alteram determinados arquivos.
+# Requer branch protection com "Require review from code owners" ativo.
+#
+# Formato: <padrão-de-arquivo>  <@owner-ou-@org/team>
+#
+# Documentação: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Arquivos de infraestrutura e pipeline — apenas seniors aprovam
+.github/                    @bankme-tech/seniors
+Dockerfile                  @bankme-tech/seniors
+docker-compose*.yml         @bankme-tech/seniors
+
+# Código de aplicação — qualquer dev pode aprovar (remova se quiser restringir)
+# *                         @bankme-tech/developers
