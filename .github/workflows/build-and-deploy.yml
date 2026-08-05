@@ -253,8 +253,8 @@ jobs:
           [[ -z "$USAGE" || "$USAGE" == "null" ]] && exit 0
 
           LIMIT=10737418240
-          USAGE_GB=$(awk "BEGIN {printf \"%.1f\", $USAGE/1073741824}")
-          PCT=$(awk "BEGIN {printf \"%d\", $USAGE/$LIMIT*100}")
+          USAGE_GB=$(awk -v u="$USAGE" 'BEGIN {printf "%.1f", u/1073741824}')
+          PCT=$(awk -v u="$USAGE" -v l="$LIMIT" 'BEGIN {printf "%d", u/l*100}')
 
           if [ "$USAGE" -gt "$((LIMIT * 85 / 100))" ]; then
             ICON="⚠️"
