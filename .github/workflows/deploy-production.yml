@@ -287,8 +287,11 @@ jobs:
           [ -n "${{ steps.flags.outputs.env-flags }}" ] && \
             DEPLOY_ARGS+=("--set-env-vars=${{ steps.flags.outputs.env-flags }}")
 
-          [ -n "${{ steps.flags.outputs.secret-flags }}" ] && \
+          if [ -n "${{ steps.flags.outputs.secret-flags }}" ]; then
             DEPLOY_ARGS+=("--set-secrets=${{ steps.flags.outputs.secret-flags }}")
+          else
+            DEPLOY_ARGS+=("--clear-secrets")
+          fi
 
           echo "Promoting ${{ inputs.version }} to production..."
           "${DEPLOY_ARGS[@]}"
